@@ -326,7 +326,6 @@ pipe->remove("name");                         // 移除
 ```cpp
 server.port(8080)
     .workerThreads(4)
-    .connectionPoolSize(128)    // Connection 对象池
     .eventQueueSize(65536)      // 线程间 SPSC 队列
     .timerSlots(256)            // 时间轮槽数
     .timerTickMs(1000)          // 时间轮滴答间隔

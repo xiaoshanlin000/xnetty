@@ -66,7 +66,6 @@ BossEventLoop (1 个线程)
 │Poller  │ │Poller  │ │Poller  │
 │connfds │ │connfds │ │connfds │
 │connections│ │connections│ │connections│
-│connPool│ │connPool│ │connPool│
 │bufPool │ │bufPool │ │bufPool │
 └────────┘ └────────┘ └────────┘
 ```
@@ -106,7 +105,7 @@ Boss EventLoop                   Worker-1
 | -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **EventLoop**                    | 基类，Poller + loop + runInLoop + 唤醒 pipe                                                                                                                                                        |
 | **BossEventLoop**                | 继承 EventLoop，`::poll()` 等 listen+ wakeup，accept 后分发                                                                                                                                        |
-| **WorkerEventLoop**              | 继承 EventLoop，`connections_` map + Connection 池 + ByteBuf 池 + `pendingFlush_` (weak_ptr) 批量写队列，onRead/onWrite/onError/flushPending                                                       |
+| **WorkerEventLoop**              | 继承 EventLoop，`connections_` map + ByteBuf 池 + `pendingFlush_` (weak_ptr) 批量写队列，onRead/onWrite/onError/flushPending                                                                       |
 | **Poller 跨平台**                | `poller.cpp` 中 `#if defined`: KPoller(kqueue) / EPoller(epoll) / WSPoller(WSAPoll)                                                                                                                |
 | **Channel**                      | fd 事件注册，event flags 通用(0x01 read / 0x02 write / 0x04 EOF / 0x08 error)，`context_` 为 `weak_ptr<Connection>`，`loop_` 为 `weak_ptr<EventLoop>`                                              |
 | **ChannelPipeline**              | InboundHandler + OutboundHandler 双向链，每个 handler 有 `shared_ptr<ChannelHandlerContext>`，`fireRead(std::any)` 传递类型化消息，`fireWrite` 反向遍历 outbound                                   |
@@ -120,7 +119,7 @@ Boss EventLoop                   Worker-1
 | **flushWriteBuf**                | `writev` 零拷贝 body（header 在 writeBuf，body 直接从 string 写），EAGAIN 走 pendingFlush\_                                                                                                        |
 | **ServerBootstrap**              | `wait()` 使用 `std::promise`/`std::future`，`listen()` 优先 dual-stack IPv6                                                                                                                        |
 | **EventLoop 安全**               | 主循环 `try/catch` 防崩溃，`onError` 关闭异常连接                                                                                                                                                  |
-| **Pipeline 安全**                | handler 调用全部 `try/catch`，异常时 `conn_->closed = true` 交由 Worker 清理坏连接                                                                                                                 |
+| **Pipeline 安全**                | handler 调用全部 `try/catch`，异常连接通过 `onRead()`/`onError()` 由 Worker 清理                                                                                                                    |
 | **内存安全**                     | 所有反向引用使用 `weak_ptr`（`Connection::loop`、`Channel::context_`、`Channel::loop_`、`pendingFlush_`），所有权用 `shared_ptr`/`unique_ptr`，零额外分配（aliasing）                              |
 | **TopicTree**                    | 订阅发布树，`std::mutex` 线程安全，`publish` 直接回调派发到订阅者 Worker 线程，消息立即投递                                                                                                        |
 | **WebSocketCodec**               | RFC 6455 帧解析，UTF-8 校验，分片消息，Mask/unmask                                                                                                                                                 |
@@ -129,7 +128,6 @@ Boss EventLoop                   Worker-1
 | **WebSocket**                    | 包装类，提供 `send()` / `sendBinary()` / `subscribe()` / `publish()` / `broadcast()`，`publish` 调用 TopicTree 直接派发，排除发送者                                                                |
 | **WebSocket 空闲超时**           | PING/PONG 自动调用 `signalActivity()` 重置读空闲计时，关闭时自动取消所有 TopicTree 订阅                                                                                                            |
 | **TCP_NODELAY**                  | 可配置，默认开启                                                                                                                                                                                   |
-| **ObjectPool**                   | 泛型对象池，已废弃（改用 WorkerEventLoop 的 shared_ptr 池）                                                                                                                                        |
 | **Logger**                       | 分级日志（TRACE/DEBUG/INFO/WARN/ERROR），自定义 `LogHandler`，`XNETTY_INFO(...)` 宏                                                                                                                |
 | **Metrics**                      | 原子计数器：`requests`、`bytesSent`、`bytesReceived`、`activeConns`、`errors`                                                                                                                      |
 | **TokenBucket**                  | 令牌桶速率限制，`tryConsume()` 原子扣减，线程安全                                                                                                                                                  |
@@ -148,7 +146,7 @@ Boss EventLoop                   Worker-1
 | **Handler 状态管理**             | 连接级状态存 `Context::set<T>()` KV store，Handler 无成员变量，`state_demo` 示例展示完整用法                                                                                                        |
 | **Handler Netty API**            | `handlerAdded`/`handlerRemoved`/`exceptionCaught`，`channelRegistered`/`channelUnregistered`/`channelActive`/`channelInactive`/`channelReadComplete`/`userEventTriggered`，出站 `flush`/`close`  |
 | **Pipeline 增强**                | `addFirst`/`addBefore`/`addAfter`/`replace`(按名/按类型)，`fireChannelXxx` 事件链，`ChannelHandlerContext::write`/`flush`/`close`/`handler`/`name`/`isRemoved`                                    |
-| **ServerBootstrap 配置**         | `connectionPoolSize`/`eventQueueSize`/`timerSlots`/`timerTickMs`/`maxEventsPerPoll`/`sslCacheSize`/`listenBacklog`/`tcpNoDelay`，参数校验，中英双语注释                                               |
+| **ServerBootstrap 配置**         | `eventQueueSize`/`timerSlots`/`timerTickMs`/`maxEventsPerPoll`/`sslCacheSize`/`listenBacklog`/`tcpNoDelay`，参数校验，中英双语注释                                                                  |
 | **SpscQueue 动态队列**           | 从编译期模板 `SpscQueue<T,N>` 改为运行时 `SpscQueue<T>`，`eventQueueSize` 可配置                                                                                                                    |
 | **TimerWheel 运行时重建**        | `timerSlots`/`timerTickMs` 支持运行时配置，`unique_ptr` 指针化管理                                                                                                                                  |
 | **安装**                         | `cmake --install build` 安装 lib + headers，`XNETTY_BUILD_SHARED=ON` 构建动态库                                                                                                                     |
@@ -219,7 +217,6 @@ Boss EventLoop                   Worker-1
 | **客户端 Bootstrap** | `Bootstrap` 出站连接                                                  | ⏳ 未开始                  |
 | **ChannelFuture**    | 异步结果 + 回调链                                                     | ⏳ 未开始                  |
 | **io_uring (Linux)** | `UringPoller` 替代 epoll                                              | ⏳ 未开始                  |
-| **Batch accept**     | accept4 批量 + 批量 Poller 注册                                       | ⏳ 未开始                  |
 | **Batch accept**     | accept4 批量 + 批量 Poller 注册                                       | ⏳ 未开始                  |
 
 ---
@@ -328,12 +325,13 @@ xnetty/
 │   │   ├── logger.h               # 分级日志 + XNETTY_INFO 宏
 │   │   ├── metrics.h              # 原子计数器
 │   │   ├── result.h
+│   │   ├── time_util.h            # nowMs() / nowUs()
 │   │   └── token_bucket.h         # 令牌桶速率限制
 │   ├── event/
 │   │   ├── event_loop.h           # 基类: poller + loop + runInLoop
 │   │   ├── event_loop_group.h
 │   │   ├── boss_loop.h            # Boss: listen + accept + dispatch
-│   │   ├── worker_loop.h          # Worker: connections + pool
+│   │   ├── worker_loop.h          # Worker: connections_ map + buf pool
 │   │   ├── poller.h               # Poller 接口 + kPollerRead/Write/EOF/Error
 │   │   └── timer_wheel.h
 │   ├── http/
@@ -372,7 +370,7 @@ xnetty/
 │   ├── event/event_loop_group.cpp
 │   ├── event/poller.cpp           # KPoller/EPoller/WSPoller (#ifdef)
 │   ├── event/timer_wheel.cpp
-│   ├── event/worker_loop.cpp      # Worker: acquire/release conn + buf
+│   ├── event/worker_loop.cpp      # Worker: connections_ map + buf pool
 │   ├── http/http_codec.cpp        # llhttp 回调驱动
 │   ├── http/compressor_handler.cpp # gzip/deflate 压缩 handler
 │   ├── http/http_request.cpp
@@ -389,7 +387,7 @@ xnetty/
 │   ├── websocket/websocket_handler.cpp # onOpen/onMessage/onClose
 │   ├── websocket/ws_handshake.cpp
 │   └── websocket/ws_upgrade_handler.cpp # HTTP→WS 升级
-├── tests/ (27 test suites, 33+ test cases)
+├── tests/ (29 test suites, SslHandler integration + fuzz)
 ├── examples/ (hello_world, rest_api, bench_server, outbound_demo, ws_server, ws_chat, mixed_server, demo, ssl_server, state_demo)
 └── rustserver/                    # hyper baseline 对比
 ```
