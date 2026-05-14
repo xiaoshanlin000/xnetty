@@ -8,6 +8,9 @@ cmake -B build && cmake --build build
 
 # Release（压测）
 cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build
+
+# MinSizeRel（最小体积）
+cmake -B build -DCMAKE_BUILD_TYPE=MinSizeRel && cmake --build build
 ```
 
 ## 代码风格
