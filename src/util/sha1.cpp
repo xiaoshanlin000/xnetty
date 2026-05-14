@@ -1,5 +1,6 @@
 #include "xnetty/util/sha1.h"
 
+#include <cstdint>
 #include <cstring>
 
 namespace xnetty {
