@@ -12,4 +12,4 @@
 	url = https://github.com/nodejs/llhttp.git
 [submodule "third_part/boringssl"]
 	path = third_part/boringssl
-	url = https://boringssl.googlesource.com/boringssl
+	url = https://github.com/google/boringssl.git
