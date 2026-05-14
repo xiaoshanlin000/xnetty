@@ -10,6 +10,6 @@ jobs:
       - name: configure
         run: cmake -B build
       - name: build
-        run: cmake --build build -j$(nproc) --verbose 2>&1
+        run: cmake --build build -j$(nproc)
       - name: test
         run: ctest --test-dir build --timeout 10
