@@ -1,5 +1,6 @@
 #include "xnetty/channel/channel_pipeline.h"
 
+#include <algorithm>
 #include <exception>
 #include <string>
 

@@ -1,5 +1,6 @@
 #include "xnetty/buffer/byte_buf.h"
 
+#include <algorithm>
 #include <cstring>
 #include <stdexcept>
 

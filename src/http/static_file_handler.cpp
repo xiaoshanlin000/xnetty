@@ -8,6 +8,7 @@
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
+#include <algorithm>
 #include <memory>
 #include <vector>
 

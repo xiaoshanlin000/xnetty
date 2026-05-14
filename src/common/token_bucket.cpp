@@ -1,3 +1,5 @@
+#include <algorithm>
+
 #include "xnetty/common/token_bucket.h"
 
 namespace xnetty {

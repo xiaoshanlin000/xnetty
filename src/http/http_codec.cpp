@@ -2,6 +2,7 @@
 
 #include <llhttp.h>
 
+#include <algorithm>
 #include <cstring>
 #include <string>
 

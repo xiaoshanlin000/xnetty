@@ -1,5 +1,6 @@
 #include "xnetty/event/worker_loop.h"
 
+#include <algorithm>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <sys/uio.h>
