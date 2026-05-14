@@ -30,8 +30,6 @@ struct SslHandler::SslState {
     BIO *inBio = nullptr;
     BIO *outBio = nullptr;
     ByteBuf plainBuf;
-    uint8_t readBuf[4096];
-    uint8_t writeBuf[16384];
     bool handshakeDone = false;
     bool sslShutdown = false;
 
@@ -160,9 +158,10 @@ void SslHandler::channelRead(const std::shared_ptr<ChannelHandlerContext> &ctx, 
 
     st.plainBuf.clear();
     while (true) {
-        int ret = SSL_read(st.ssl, st.readBuf, sizeof(st.readBuf));
+        uint8_t buf[4096];
+        int ret = SSL_read(st.ssl, buf, sizeof(buf));
         if (ret > 0) {
-            st.plainBuf.writeBytes(st.readBuf, static_cast<size_t>(ret));
+            st.plainBuf.writeBytes(buf, static_cast<size_t>(ret));
             continue;
         }
         if (ret == 0) {
@@ -279,12 +278,13 @@ void SslHandler::flushEncrypted(SslState &st, const std::shared_ptr<ChannelHandl
         return;
     }
     while (true) {
-        int n = BIO_read(st.outBio, st.writeBuf, sizeof(st.writeBuf));
+        uint8_t buf[4096];
+        int n = BIO_read(st.outBio, buf, sizeof(buf));
         if (n <= 0) {
             break;
         }
         auto &wb = ctx->context()->writeBuf();
-        wb.writeBytes(st.writeBuf, static_cast<size_t>(n));
+        wb.writeBytes(buf, static_cast<size_t>(n));
         ctx->context()->flush();
     }
 }
