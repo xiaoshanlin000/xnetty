@@ -1,0 +1,13 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: configure
+        run: cmake -B build
+      - name: build
+        run: cmake --build build -j$(nproc)
+      - name: test
+        run: ctest --test-dir build --timeout 10

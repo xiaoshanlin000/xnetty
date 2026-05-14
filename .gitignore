@@ -1,0 +1,73 @@
+# Build
+build/
+build*/
+cmake-build*/
+cmake-build-*/
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+*.lib
+*.exp
+*.pdb
+*.ilk
+
+# Coverage
+*.gcno
+*.gcda
+*.gcov
+*.profraw
+*.profdata
+Coverage/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.vs/
+*.sublime-*
+*.user
+*.suo
+*.userosscache
+.clangd/
+
+# macOS
+.DS_Store
+.dSYM/
+*.DS_Store?
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Editor temp
+.cache/
+compile_commands.json
+*.log
+*.tmp
+*.temp
+*.orig
+*.save
+*.stackdump
+
+# Debug
+core
+vgcore.*
+
+# Rust
+rustserver/target/
+
+# Bun
+bunserver/*/node_modules/
+bunserver/*/bun.lock
+bunserver/*/bun.lockb
+
+# Third-party upstream CI (vendored deps shouldn't pollute repo root)
+third_part/**/.github/
+
+# Test
+Testing/
