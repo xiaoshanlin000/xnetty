@@ -12,6 +12,8 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build
 
 ## 代码风格
 
+- 写代码时确保包含所需的头文件，不要遗漏
+
 ```bash
 cd build
 make tidy   # clang-tidy: 强制大括号

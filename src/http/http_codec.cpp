@@ -23,19 +23,6 @@ struct HttpServerCodec::CodecState {
 
 static constexpr const char *kCodecKey = "__http_codec_state__";
 
-HttpServerCodec::CodecState &HttpServerCodec::state(const std::shared_ptr<ChannelHandlerContext> &ctx) {
-    auto ctxPtr = ctx->context();
-    auto *s = ctxPtr->get<CodecState>(kCodecKey);
-    if (s) {
-        return *s;
-    }
-    CodecState cs;
-    llhttp_init(&cs.parser, HTTP_REQUEST, &settings_);
-    cs.initialized = true;
-    ctxPtr->set(kCodecKey, std::move(cs));
-    return *ctxPtr->get<CodecState>(kCodecKey);
-}
-
 struct ParseCtx {
     HttpRequest *req = nullptr;
     const char *rawStart = nullptr;
@@ -48,7 +35,9 @@ struct ParseCtx {
 };
 
 HttpServerCodec::HttpServerCodec(size_t maxHeaderSize, size_t maxBodySize)
-    : maxHeaderSize_(maxHeaderSize), maxBodySize_(maxBodySize) {}
+    : impl_(std::make_unique<Impl>()), maxHeaderSize_(maxHeaderSize), maxBodySize_(maxBodySize) {}
+
+HttpServerCodec::~HttpServerCodec() = default;
 
 static int on_url(llhttp_t *p, const char *at, size_t len) {
     auto *pctx = static_cast<ParseCtx *>(p->data);
@@ -133,16 +122,34 @@ static int on_msg_cmpl(llhttp_t *p) {
     return HPE_PAUSED;
 }
 
-const llhttp_settings_t HttpServerCodec::settings_ = []() {
-    llhttp_settings_t s;
-    llhttp_settings_init(&s);
-    s.on_url = on_url;
-    s.on_header_field = on_hf;
-    s.on_header_value = on_hv;
-    s.on_headers_complete = on_hc;
-    s.on_message_complete = on_msg_cmpl;
-    return s;
-}();
+struct HttpServerCodec::Impl {
+    const llhttp_settings_t &settings() {
+        static const llhttp_settings_t s = []() {
+            llhttp_settings_t s;
+            llhttp_settings_init(&s);
+            s.on_url = on_url;
+            s.on_header_field = on_hf;
+            s.on_header_value = on_hv;
+            s.on_headers_complete = on_hc;
+            s.on_message_complete = on_msg_cmpl;
+            return s;
+        }();
+        return s;
+    }
+};
+
+HttpServerCodec::CodecState &HttpServerCodec::state(const std::shared_ptr<ChannelHandlerContext> &ctx) {
+    auto ctxPtr = ctx->context();
+    auto *s = ctxPtr->get<CodecState>(kCodecKey);
+    if (s) {
+        return *s;
+    }
+    CodecState cs;
+    llhttp_init(&cs.parser, HTTP_REQUEST, &impl_->settings());
+    cs.initialized = true;
+    ctxPtr->set(kCodecKey, std::move(cs));
+    return *ctxPtr->get<CodecState>(kCodecKey);
+}
 
 void HttpServerCodec::reset() {}
 

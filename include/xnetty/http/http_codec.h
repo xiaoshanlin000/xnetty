@@ -1,7 +1,5 @@
 #pragma once
 
-#include <llhttp.h>
-
 #include <any>
 #include <cstddef>
 #include <memory>
@@ -23,6 +21,7 @@ class HttpEncoder {
 class HttpServerCodec : public ChannelDuplexHandler {
    public:
     explicit HttpServerCodec(size_t maxHeaderSize = 0, size_t maxBodySize = 0);
+    ~HttpServerCodec() override;
 
     void channelRead(const std::shared_ptr<ChannelHandlerContext> &ctx, std::any msg) override;
     void write(const std::shared_ptr<ChannelHandlerContext> &ctx, std::any msg) override;
@@ -32,10 +31,12 @@ class HttpServerCodec : public ChannelDuplexHandler {
     void setMaxBodySize(size_t s) { maxBodySize_ = s; }
 
    private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+
     struct CodecState;
     CodecState &state(const std::shared_ptr<ChannelHandlerContext> &ctx);
 
-    static const llhttp_settings_t settings_;
     size_t maxHeaderSize_;
     size_t maxBodySize_;
 };

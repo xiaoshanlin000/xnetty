@@ -13,6 +13,16 @@
 
 namespace xnetty {
 
+struct SslHandler::Impl {
+    ssl_ctx_st *sslCtx = nullptr;
+
+    ~Impl() {
+        if (sslCtx) {
+            SSL_CTX_free(sslCtx);
+        }
+    }
+};
+
 // ── Per-connection SSL state (stored in Context KV store) ────────────
 
 struct SslHandler::SslState {
@@ -55,6 +65,10 @@ struct SslHandler::SslState {
     }
 };
 
+SslHandler::SslHandler() : impl_(std::make_unique<Impl>()) {}
+
+SslHandler::~SslHandler() = default;
+
 SslHandler::SslState &SslHandler::state(const std::shared_ptr<ChannelHandlerContext> &ctx) {
     static constexpr const char *kKey = "__ssl_handler_state__";
     auto *s = ctx->context()->get<SslState>(kKey);
@@ -85,11 +99,9 @@ std::shared_ptr<SslHandler> SslHandler::forServerFile(const std::string &certFil
     return h;
 }
 
-// ── Lifecycle ────────────────────────────────────────────────────────
-
-SslHandler::~SslHandler() {
-    if (sslCtx_) {
-        SSL_CTX_free(sslCtx_);
+void SslHandler::setSessionCacheSize(long size) {
+    if (impl_->sslCtx) {
+        SSL_CTX_sess_set_cache_size(impl_->sslCtx, size);
     }
 }
 
@@ -106,7 +118,7 @@ void SslHandler::channelRead(const std::shared_ptr<ChannelHandlerContext> &ctx, 
     ByteBuf *enc = *bufPtr;
 
     if (!st.ssl) {
-        st.ssl = SSL_new(sslCtx_);
+        st.ssl = SSL_new(impl_->sslCtx);
         if (!st.ssl) {
             handleError(ctx, 0, "SSL_new");
             return;
@@ -199,22 +211,22 @@ void SslHandler::write(const std::shared_ptr<ChannelHandlerContext> &ctx, std::a
 // ── Private helpers ──────────────────────────────────────────────────
 
 bool SslHandler::initCtx(const std::string &cert, const std::string &key, bool isPath) {
-    sslCtx_ = SSL_CTX_new(TLS_server_method());
-    if (!sslCtx_) {
+    impl_->sslCtx = SSL_CTX_new(TLS_server_method());
+    if (!impl_->sslCtx) {
         return false;
     }
-    SSL_CTX_set_min_proto_version(sslCtx_, TLS1_2_VERSION);
+    SSL_CTX_set_min_proto_version(impl_->sslCtx, TLS1_2_VERSION);
 
-    SSL_CTX_set_session_cache_mode(sslCtx_, SSL_SESS_CACHE_SERVER);
-    SSL_CTX_sess_set_cache_size(sslCtx_, 10240);
-    SSL_CTX_set_session_id_context(sslCtx_, reinterpret_cast<const unsigned char *>("xnetty"), 6);
+    SSL_CTX_set_session_cache_mode(impl_->sslCtx, SSL_SESS_CACHE_SERVER);
+    SSL_CTX_sess_set_cache_size(impl_->sslCtx, 10240);
+    SSL_CTX_set_session_id_context(impl_->sslCtx, reinterpret_cast<const unsigned char *>("xnetty"), 6);
 
     if (isPath) {
-        if (SSL_CTX_use_certificate_chain_file(sslCtx_, cert.c_str()) <= 0) {
+        if (SSL_CTX_use_certificate_chain_file(impl_->sslCtx, cert.c_str()) <= 0) {
             XNETTY_ERROR("SSL: failed to load cert: " << cert);
             return false;
         }
-        if (SSL_CTX_use_PrivateKey_file(sslCtx_, key.c_str(), SSL_FILETYPE_PEM) <= 0) {
+        if (SSL_CTX_use_PrivateKey_file(impl_->sslCtx, key.c_str(), SSL_FILETYPE_PEM) <= 0) {
             XNETTY_ERROR("SSL: failed to load key: " << key);
             return false;
         }
@@ -241,17 +253,17 @@ bool SslHandler::initCtx(const std::string &cert, const std::string &key, bool i
             return false;
         }
 
-        if (SSL_CTX_use_certificate(sslCtx_, x) <= 0) {
+        if (SSL_CTX_use_certificate(impl_->sslCtx, x) <= 0) {
             X509_free(x);
             EVP_PKEY_free(pk);
             return false;
         }
-        if (SSL_CTX_use_PrivateKey(sslCtx_, pk) <= 0) {
+        if (SSL_CTX_use_PrivateKey(impl_->sslCtx, pk) <= 0) {
             X509_free(x);
             EVP_PKEY_free(pk);
             return false;
         }
-        if (!SSL_CTX_check_private_key(sslCtx_)) {
+        if (!SSL_CTX_check_private_key(impl_->sslCtx)) {
             X509_free(x);
             EVP_PKEY_free(pk);
             return false;

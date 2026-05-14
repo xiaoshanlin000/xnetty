@@ -1,7 +1,5 @@
 #pragma once
 
-#include <openssl/ssl.h>
-
 #include <any>
 #include <memory>
 #include <string>
@@ -20,25 +18,22 @@ class SslHandler : public ChannelDuplexHandler {
     void channelRead(const std::shared_ptr<ChannelHandlerContext> &ctx, std::any msg) override;
     void write(const std::shared_ptr<ChannelHandlerContext> &ctx, std::any msg) override;
 
-    void setSessionCacheSize(long size) {
-        if (sslCtx_) {
-            SSL_CTX_sess_set_cache_size(sslCtx_, size);
-        }
-    }
+    void setSessionCacheSize(long size);
 
    private:
-    SslHandler() = default;
+    SslHandler();
     SslHandler(const SslHandler &) = delete;
     SslHandler &operator=(const SslHandler &) = delete;
 
     struct SslState;
     SslState &state(const std::shared_ptr<ChannelHandlerContext> &ctx);
 
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+
     bool initCtx(const std::string &cert, const std::string &key, bool isPath);
     void flushEncrypted(SslState &st, const std::shared_ptr<ChannelHandlerContext> &ctx);
     void handleError(const std::shared_ptr<ChannelHandlerContext> &ctx, int ret, const char *what);
-
-    ssl_ctx_st *sslCtx_ = nullptr;
 };
 
 }  // namespace xnetty
