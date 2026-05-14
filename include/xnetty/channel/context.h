@@ -25,6 +25,10 @@ class Context {
     void bind(const std::shared_ptr<Connection> &conn) { conn_ = conn; }
 
     // ---- Data storage (per-connection, EventLoop thread, no lock) ----
+    // Types T: any movable/copyable type (int, string, vector, shared_ptr, custom struct, etc).
+    // Do NOT store int arr[] = {1, 2, 3}; C-style arrays (they decay to pointer) or T& references.
+    // 能存: int, string, vector, shared_ptr, 自定义 struct 等可移动/拷贝类型
+    // 不能存: int arr[] = {1, 2, 3}; C 风格数组(会退化成指针), T& 引用类型
     template <typename T>
     void set(const std::string &key, T &&val) {
         auto td = std::make_shared<TypedData<std::decay_t<T>>>();

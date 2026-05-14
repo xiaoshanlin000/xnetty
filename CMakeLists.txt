@@ -85,6 +85,10 @@ if(CLANG_FORMAT)
         COMMENT "Checking code style (clang-format)")
 endif()
 
+# --- Generated config for clang-tidy (see cmake/tidy_config.h.in) ---
+set(TIDY_CONFIG_H "${CMAKE_BINARY_DIR}/gen/tidy_config.h")
+configure_file("${CMAKE_SOURCE_DIR}/cmake/tidy_config.h.in" "${TIDY_CONFIG_H}")
+
 # --- Tidy (clang-tidy: 强制大括号) ---
 # 先于 format 执行: tidy 加括号, format 整理缩进
 # make tidy && make format
@@ -106,6 +110,7 @@ if(CLANG_TIDY)
         -I${CMAKE_BINARY_DIR}/third_part/zlib-build
         -I${CMAKE_SOURCE_DIR}/third_part/googletest/googletest/include
         -I${CMAKE_SOURCE_DIR}/third_part/googletest/googlemock/include
+        "-include${TIDY_CONFIG_H}"
         -std=c++17)
     add_custom_target(tidy
         COMMAND ${CLANG_TIDY} --checks='${TIDY_CHECKS}' --fix ${TIDY_SRC}

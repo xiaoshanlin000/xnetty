@@ -1,11 +1,11 @@
 #include "xnetty/ssl/ssl_handler.h"
 
-#include <utility>
-
 #include <openssl/err.h>
 #include <openssl/pem.h>
 #include <openssl/ssl.h>
 #include <openssl/x509.h>
+
+#include <utility>
 
 #include "xnetty/channel/channel_handler_context.h"
 #include "xnetty/channel/context.h"

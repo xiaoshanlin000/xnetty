@@ -5,10 +5,10 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
-#include <algorithm>
 #include <memory>
 #include <vector>
 
