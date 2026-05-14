@@ -7,9 +7,6 @@
 [submodule "third_part/zlib"]
 	path = third_part/zlib
 	url = https://github.com/madler/zlib.git
-[submodule "third_part/llhttp"]
-	path = third_part/llhttp
-	url = https://github.com/nodejs/llhttp.git
 [submodule "third_part/boringssl"]
 	path = third_part/boringssl
 	url = https://github.com/google/boringssl.git

@@ -1,0 +1,10 @@
+prefix=/Users/shanlin/XiaoshanlinGithub/xnetty/install
+exec_prefix=/Users/shanlin/XiaoshanlinGithub/xnetty/install
+libdir=/Users/shanlin/XiaoshanlinGithub/xnetty/install/lib
+includedir=/Users/shanlin/XiaoshanlinGithub/xnetty/install/include
+
+Name: libllhttp
+Description: Node.js llhttp Library
+Version: 9.2.1
+Libs: -L${libdir} -lllhttp
+Cflags: -I${includedir}
