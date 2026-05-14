@@ -31,17 +31,22 @@ class SpscQueue {
 
     SpscQueue(SpscQueue &&other) noexcept
         : buf_(std::exchange(other.buf_, nullptr)),
-          sizeMask_(other.sizeMask_),
+          sizeMask_(std::exchange(other.sizeMask_, 0)),
           head_(other.head_.load()),
-          tail_(other.tail_.load()) {}
+          tail_(other.tail_.load()) {
+        other.head_.store(0);
+        other.tail_.store(0);
+    }
 
     SpscQueue &operator=(SpscQueue &&other) noexcept {
         if (this != &other) {
             delete[] buf_;
             buf_ = std::exchange(other.buf_, nullptr);
-            sizeMask_ = other.sizeMask_;
+            sizeMask_ = std::exchange(other.sizeMask_, 0);
             head_.store(other.head_.load());
             tail_.store(other.tail_.load());
+            other.head_.store(0);
+            other.tail_.store(0);
         }
         return *this;
     }

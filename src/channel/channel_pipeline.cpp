@@ -11,6 +11,98 @@ namespace xnetty {
 
 static const char *handlerName(const std::string &name) { return name.empty() ? "unnamed" : name.c_str(); }
 
+// ── Pipeline helpers ────────────────────────────────────────────────
+
+namespace {
+
+using Entry = ChannelPipeline::HandlerEntry;
+
+template <typename F>
+void callH(const char *event, const Entry &e, F &&fn) {
+    try {
+        fn();
+    } catch (const std::exception &ex) {
+        XNETTY_ERROR("Handler[" << handlerName(e.name) << "]::" << event << ": " << ex.what());
+    }
+}
+
+template <typename F>
+void forAllInbound(const std::vector<Entry> &h, const char *event, F &&fn) {
+    for (auto &e : h) {
+        if (!e.inbound) {
+            continue;
+        }
+        callH(event, e, [&] { fn(*e.inbound, e.ctx); });
+    }
+}
+
+template <typename F>
+bool forNextInbound(const std::vector<Entry> &h, size_t start, const char *event, F &&fn) {
+    for (size_t i = start; i < h.size(); i++) {
+        if (!h[i].inbound) {
+            continue;
+        }
+        callH(event, h[i], [&] { fn(*h[i].inbound, h[i].ctx); });
+        return true;
+    }
+    return false;
+}
+
+template <typename F>
+bool forPrevOutbound(const std::vector<Entry> &h, int64_t start, const char *event, F &&fn) {
+    for (int64_t i = start; i >= 0; --i) {
+        auto &e = h[static_cast<size_t>(i)];
+        if (!e.outbound) {
+            continue;
+        }
+        callH(event, e, [&] { fn(*e.outbound, e.ctx); });
+        return true;
+    }
+    return false;
+}
+
+template <typename F>
+void forAll(const std::vector<Entry> &h, const char *event, F &&fn) {
+    for (auto &e : h) {
+        callH(event, e, [&] { fn(*e.handler, e.ctx); });
+    }
+}
+
+template <typename F>
+bool forNext(const std::vector<Entry> &h, size_t start, const char *event, F &&fn) {
+    for (size_t i = start; i < h.size(); i++) {
+        callH(event, h[i], [&] { fn(*h[i].handler, h[i].ctx); });
+        return true;
+    }
+    return false;
+}
+
+void forAllActive(const std::vector<Entry> &h, const char *event) {
+    for (auto &e : h) {
+        callH(event, e, [&] {
+            e.handler->onActive();
+            if (e.inbound) {
+                e.inbound->channelActive(e.ctx);
+            }
+        });
+    }
+}
+
+void forAllInactive(const std::vector<Entry> &h, const char *event) {
+    for (auto &e : h) {
+        callH(event, e, [&] {
+            e.handler->onInactive();
+            if (e.inbound) {
+                e.inbound->channelInactive(e.ctx);
+            }
+        });
+    }
+}
+
+}  // namespace
+
+// ── Handler management ──────────────────────────────────────────────
+
 void ChannelPipeline::addEntry(std::vector<HandlerEntry> &handlers, size_t index, std::string name,
                                std::shared_ptr<ChannelHandler> handler, ChannelPipeline *pipeline) {
     auto inbound = std::dynamic_pointer_cast<ChannelInboundHandler>(handler);
@@ -86,109 +178,41 @@ void ChannelPipeline::replace(const std::string &oldName, std::string name, std:
     }
 }
 
+// ── Pipeline fire events ────────────────────────────────────────────
+
 void ChannelPipeline::fireChannelRegistered() {
-    for (auto &e : handlers_) {
-        try {
-            if (e.inbound) {
-                e.inbound->channelRegistered(e.ctx);
-            }
-        } catch (const std::exception &ex) {
-            XNETTY_ERROR("Handler[" << handlerName(e.name) << "]::channelRegistered: " << ex.what());
-        }
-    }
+    forAllInbound(handlers_, "channelRegistered", [](auto &h, auto &c) { h.channelRegistered(c); });
 }
-
 void ChannelPipeline::fireChannelUnregistered() {
-    for (auto &e : handlers_) {
-        try {
-            if (e.inbound) {
-                e.inbound->channelUnregistered(e.ctx);
-            }
-        } catch (const std::exception &ex) {
-            XNETTY_ERROR("Handler[" << handlerName(e.name) << "]::channelUnregistered: " << ex.what());
-        }
-    }
+    forAllInbound(handlers_, "channelUnregistered", [](auto &h, auto &c) { h.channelUnregistered(c); });
 }
-
-void ChannelPipeline::fireChannelActive() {
-    for (auto &e : handlers_) {
-        try {
-            e.handler->onActive();
-            if (e.inbound) {
-                e.inbound->channelActive(e.ctx);
-            }
-        } catch (const std::exception &ex) {
-            XNETTY_ERROR("Handler[" << handlerName(e.name) << "]::channelActive: " << ex.what());
-        }
-    }
-}
-
-void ChannelPipeline::fireChannelInactive() {
-    for (auto &e : handlers_) {
-        try {
-            e.handler->onInactive();
-            if (e.inbound) {
-                e.inbound->channelInactive(e.ctx);
-            }
-        } catch (const std::exception &ex) {
-            XNETTY_ERROR("Handler[" << handlerName(e.name) << "]::channelInactive: " << ex.what());
-        }
-    }
-}
-
+void ChannelPipeline::fireChannelActive() { forAllActive(handlers_, "channelActive"); }
+void ChannelPipeline::fireChannelInactive() { forAllInactive(handlers_, "channelInactive"); }
 void ChannelPipeline::fireActive() { fireChannelActive(); }
-
 void ChannelPipeline::fireInactive() { fireChannelInactive(); }
 
 void ChannelPipeline::fireRead(ByteBuf *buf) { fireReadFrom(0, std::any(buf)); }
-
 void ChannelPipeline::fireChannelRead(std::any msg) { fireReadFrom(0, std::move(msg)); }
 
 void ChannelPipeline::fireReadFrom(size_t startIndex, std::any msg) {
     for (size_t i = startIndex; i < handlers_.size(); i++) {
-        if (handlers_[i].inbound) {
-            try {
-                handlers_[i].inbound->channelRead(handlers_[i].ctx, std::move(msg));
-            } catch (const std::exception &e) {
-                XNETTY_ERROR("Handler[" << handlerName(handlers_[i].name) << "]::channelRead: " << e.what());
-            }
-            return;
+        if (!handlers_[i].inbound) {
+            continue;
         }
+        callH("channelRead", handlers_[i],
+              [&] { handlers_[i].inbound->channelRead(handlers_[i].ctx, std::move(msg)); });
+        return;
     }
 }
 
 void ChannelPipeline::fireChannelReadComplete() {
-    for (auto &e : handlers_) {
-        try {
-            if (e.inbound) {
-                e.inbound->channelReadComplete(e.ctx);
-            }
-        } catch (const std::exception &ex) {
-            XNETTY_ERROR("Handler[" << handlerName(e.name) << "]::channelReadComplete: " << ex.what());
-        }
-    }
+    forAllInbound(handlers_, "channelReadComplete", [](auto &h, auto &c) { h.channelReadComplete(c); });
 }
-
 void ChannelPipeline::fireUserEventTriggered(std::any evt) {
-    for (auto &e : handlers_) {
-        try {
-            if (e.inbound) {
-                e.inbound->userEventTriggered(e.ctx, evt);
-            }
-        } catch (const std::exception &ex) {
-            XNETTY_ERROR("Handler[" << handlerName(e.name) << "]::userEventTriggered: " << ex.what());
-        }
-    }
+    forAllInbound(handlers_, "userEventTriggered", [evt](auto &h, auto &c) { h.userEventTriggered(c, evt); });
 }
-
 void ChannelPipeline::fireExceptionCaught(std::any cause) {
-    for (auto &e : handlers_) {
-        try {
-            e.handler->exceptionCaught(e.ctx, cause);
-        } catch (const std::exception &ex) {
-            XNETTY_ERROR("Handler[" << handlerName(e.name) << "]::exceptionCaught: " << ex.what());
-        }
-    }
+    forAll(handlers_, "exceptionCaught", [cause](auto &h, auto &c) { h.exceptionCaught(c, cause); });
 }
 
 void ChannelPipeline::fireWrite(ByteBuf *buf) {
@@ -206,48 +230,27 @@ void ChannelPipeline::fireWrite(std::any msg) {
 }
 
 void ChannelPipeline::fireChannelWrite(std::any msg) { fireWrite(std::move(msg)); }
-
 void ChannelPipeline::fireChannelFlush() {
-    for (int64_t i = static_cast<int64_t>(handlers_.size()) - 1; i >= 0; --i) {
-        size_t idx = static_cast<size_t>(i);
-        if (handlers_[idx].outbound) {
-            try {
-                handlers_[idx].outbound->flush(handlers_[idx].ctx);
-            } catch (const std::exception &e) {
-                XNETTY_ERROR("Handler[" << handlerName(handlers_[idx].name) << "]::flush: " << e.what());
-            }
-            return;
-        }
-    }
+    forPrevOutbound(handlers_, static_cast<int64_t>(handlers_.size()) - 1, "flush",
+                    [](auto &h, auto &c) { h.flush(c); });
 }
-
 void ChannelPipeline::fireChannelClose() {
-    for (int64_t i = static_cast<int64_t>(handlers_.size()) - 1; i >= 0; --i) {
-        size_t idx = static_cast<size_t>(i);
-        if (handlers_[idx].outbound) {
-            try {
-                handlers_[idx].outbound->close(handlers_[idx].ctx);
-            } catch (const std::exception &e) {
-                XNETTY_ERROR("Handler[" << handlerName(handlers_[idx].name) << "]::close: " << e.what());
-            }
-            return;
-        }
-    }
+    forPrevOutbound(handlers_, static_cast<int64_t>(handlers_.size()) - 1, "close",
+                    [](auto &h, auto &c) { h.close(c); });
 }
 
 void ChannelPipeline::fireWriteFrom(size_t startIndex, std::any msg) {
     for (int64_t i = static_cast<int64_t>(startIndex); i >= 0; --i) {
-        size_t idx = static_cast<size_t>(i);
-        if (handlers_[idx].outbound) {
-            try {
-                handlers_[idx].outbound->write(handlers_[idx].ctx, std::move(msg));
-            } catch (const std::exception &e) {
-                XNETTY_ERROR("Handler[" << handlerName(handlers_[idx].name) << "]::write: " << e.what());
-            }
-            return;
+        auto &e = handlers_[static_cast<size_t>(i)];
+        if (!e.outbound) {
+            continue;
         }
+        callH("write", e, [&] { e.outbound->write(e.ctx, std::move(msg)); });
+        return;
     }
 }
+
+// ── Pipeline lifecycle ──────────────────────────────────────────────
 
 void ChannelPipeline::setContext(const std::shared_ptr<Connection> &conn) {
     auto pipeAlias = std::shared_ptr<ChannelPipeline>(conn, &conn->pipeline());
@@ -288,67 +291,34 @@ void ChannelPipeline::callHandlerAdded(size_t index) {
 // ── ChannelHandlerContext ────────────────────────────────────────────
 
 void ChannelHandlerContext::fireChannelRegistered() {
-    if (pipelineLife_) {
-        for (size_t i = index_ + 1; i < pipelineLife_->handlers_.size(); i++) {
-            auto &e = pipelineLife_->handlers_[i];
-            if (e.inbound) {
-                try {
-                    e.inbound->channelRegistered(e.ctx);
-                } catch (const std::exception &ex) {
-                    XNETTY_ERROR("Handler[" << handlerName(e.name) << "]::channelRegistered: " << ex.what());
-                }
-                return;
-            }
-        }
+    if (!pipelineLife_) {
+        return;
     }
+    forNextInbound(pipelineLife_->handlers_, index_ + 1, "channelRegistered",
+                   [](auto &h, auto &c) { h.channelRegistered(c); });
 }
 
 void ChannelHandlerContext::fireChannelUnregistered() {
-    if (pipelineLife_) {
-        for (size_t i = index_ + 1; i < pipelineLife_->handlers_.size(); i++) {
-            auto &e = pipelineLife_->handlers_[i];
-            if (e.inbound) {
-                try {
-                    e.inbound->channelUnregistered(e.ctx);
-                } catch (const std::exception &ex) {
-                    XNETTY_ERROR("Handler[" << handlerName(e.name) << "]::channelUnregistered: " << ex.what());
-                }
-                return;
-            }
-        }
+    if (!pipelineLife_) {
+        return;
     }
+    forNextInbound(pipelineLife_->handlers_, index_ + 1, "channelUnregistered",
+                   [](auto &h, auto &c) { h.channelUnregistered(c); });
 }
 
 void ChannelHandlerContext::fireChannelActive() {
-    if (pipelineLife_) {
-        for (size_t i = index_ + 1; i < pipelineLife_->handlers_.size(); i++) {
-            auto &e = pipelineLife_->handlers_[i];
-            if (e.inbound) {
-                try {
-                    e.inbound->channelActive(e.ctx);
-                } catch (const std::exception &ex) {
-                    XNETTY_ERROR("Handler[" << handlerName(e.name) << "]::channelActive: " << ex.what());
-                }
-                return;
-            }
-        }
+    if (!pipelineLife_) {
+        return;
     }
+    forNextInbound(pipelineLife_->handlers_, index_ + 1, "channelActive", [](auto &h, auto &c) { h.channelActive(c); });
 }
 
 void ChannelHandlerContext::fireChannelInactive() {
-    if (pipelineLife_) {
-        for (size_t i = index_ + 1; i < pipelineLife_->handlers_.size(); i++) {
-            auto &e = pipelineLife_->handlers_[i];
-            if (e.inbound) {
-                try {
-                    e.inbound->channelInactive(e.ctx);
-                } catch (const std::exception &ex) {
-                    XNETTY_ERROR("Handler[" << handlerName(e.name) << "]::channelInactive: " << ex.what());
-                }
-                return;
-            }
-        }
+    if (!pipelineLife_) {
+        return;
     }
+    forNextInbound(pipelineLife_->handlers_, index_ + 1, "channelInactive",
+                   [](auto &h, auto &c) { h.channelInactive(c); });
 }
 
 void ChannelHandlerContext::fireChannelRead(std::any msg) {
@@ -358,49 +328,27 @@ void ChannelHandlerContext::fireChannelRead(std::any msg) {
 }
 
 void ChannelHandlerContext::fireChannelReadComplete() {
-    if (pipelineLife_) {
-        for (size_t i = index_ + 1; i < pipelineLife_->handlers_.size(); i++) {
-            auto &e = pipelineLife_->handlers_[i];
-            if (e.inbound) {
-                try {
-                    e.inbound->channelReadComplete(e.ctx);
-                } catch (const std::exception &ex) {
-                    XNETTY_ERROR("Handler[" << handlerName(e.name) << "]::channelReadComplete: " << ex.what());
-                }
-                return;
-            }
-        }
+    if (!pipelineLife_) {
+        return;
     }
+    forNextInbound(pipelineLife_->handlers_, index_ + 1, "channelReadComplete",
+                   [](auto &h, auto &c) { h.channelReadComplete(c); });
 }
 
 void ChannelHandlerContext::fireUserEventTriggered(std::any evt) {
-    if (pipelineLife_) {
-        for (size_t i = index_ + 1; i < pipelineLife_->handlers_.size(); i++) {
-            auto &e = pipelineLife_->handlers_[i];
-            if (e.inbound) {
-                try {
-                    e.inbound->userEventTriggered(e.ctx, evt);
-                } catch (const std::exception &ex) {
-                    XNETTY_ERROR("Handler[" << handlerName(e.name) << "]::userEventTriggered: " << ex.what());
-                }
-                return;
-            }
-        }
+    if (!pipelineLife_) {
+        return;
     }
+    forNextInbound(pipelineLife_->handlers_, index_ + 1, "userEventTriggered",
+                   [evt](auto &h, auto &c) { h.userEventTriggered(c, evt); });
 }
 
 void ChannelHandlerContext::fireExceptionCaught(std::any cause) {
-    if (pipelineLife_) {
-        for (size_t i = index_ + 1; i < pipelineLife_->handlers_.size(); i++) {
-            auto &e = pipelineLife_->handlers_[i];
-            try {
-                e.handler->exceptionCaught(e.ctx, cause);
-            } catch (const std::exception &ex) {
-                XNETTY_ERROR("Handler[" << handlerName(e.name) << "]::exceptionCaught: " << ex.what());
-            }
-            return;
-        }
+    if (!pipelineLife_) {
+        return;
     }
+    forNext(pipelineLife_->handlers_, index_ + 1, "exceptionCaught",
+            [cause](auto &h, auto &c) { h.exceptionCaught(c, cause); });
 }
 
 void ChannelHandlerContext::fireRead(std::any msg) {
@@ -418,6 +366,10 @@ void ChannelHandlerContext::fireWrite(std::any msg) {
             if (ctx_) {
                 auto &wbuf = ctx_->writeBuf();
                 wbuf.writeBytes((*bufPtr)->readableData(), (*bufPtr)->readableBytes());
+                if (ctx_->conn().isWriteBufOverflow()) {
+                    ctx_->close();
+                    return;
+                }
                 ctx_->flush();
             }
         }
@@ -427,37 +379,19 @@ void ChannelHandlerContext::fireWrite(std::any msg) {
 }
 
 void ChannelHandlerContext::fireFlush() {
-    if (pipelineLife_) {
-        for (int64_t i = static_cast<int64_t>(index_); i >= 0; --i) {
-            size_t idx = static_cast<size_t>(i);
-            auto &e = pipelineLife_->handlers_[idx];
-            if (e.outbound) {
-                try {
-                    e.outbound->flush(e.ctx);
-                } catch (const std::exception &ex) {
-                    XNETTY_ERROR("Handler[" << handlerName(e.name) << "]::flush: " << ex.what());
-                }
-                return;
-            }
-        }
+    if (!pipelineLife_) {
+        return;
     }
+    forPrevOutbound(pipelineLife_->handlers_, static_cast<int64_t>(index_), "flush",
+                    [](auto &h, auto &c) { h.flush(c); });
 }
 
 void ChannelHandlerContext::fireClose() {
-    if (pipelineLife_) {
-        for (int64_t i = static_cast<int64_t>(index_); i >= 0; --i) {
-            size_t idx = static_cast<size_t>(i);
-            auto &e = pipelineLife_->handlers_[idx];
-            if (e.outbound) {
-                try {
-                    e.outbound->close(e.ctx);
-                } catch (const std::exception &ex) {
-                    XNETTY_ERROR("Handler[" << handlerName(e.name) << "]::close: " << ex.what());
-                }
-                return;
-            }
-        }
+    if (!pipelineLife_) {
+        return;
     }
+    forPrevOutbound(pipelineLife_->handlers_, static_cast<int64_t>(index_), "close",
+                    [](auto &h, auto &c) { h.close(c); });
 }
 
 void ChannelHandlerContext::write(std::any msg) { fireWrite(std::move(msg)); }

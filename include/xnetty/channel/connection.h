@@ -26,6 +26,10 @@ class Connection : public std::enable_shared_from_this<Connection> {
     ByteBuf &writeBuf() { return writeBuf_; }
     const ByteBuf &writeBuf() const { return writeBuf_; }
 
+    size_t writeBufWaterMark() const { return writeBufWaterMark_; }
+    void setWriteBufWaterMark(size_t bytes) { writeBufWaterMark_ = bytes; }
+    bool isWriteBufOverflow() const { return writeBufWaterMark_ > 0 && writeBuf_.readableBytes() > writeBufWaterMark_; }
+
     bool isClosed() const { return closed_; }
     void setClosed(bool v) { closed_ = v; }
     bool isKeepAlive() const { return keepAlive_; }
@@ -71,6 +75,7 @@ class Connection : public std::enable_shared_from_this<Connection> {
     std::weak_ptr<WorkerEventLoop> loop_;
     std::shared_ptr<Context> ctx_;
     std::string pendingBody_;
+    size_t writeBufWaterMark_ = 65536;
 };
 
 }  // namespace xnetty

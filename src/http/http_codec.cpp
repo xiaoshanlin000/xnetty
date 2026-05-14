@@ -269,8 +269,8 @@ void HttpServerCodec::write(const std::shared_ptr<ChannelHandlerContext> &ctx, s
         ctx->fireWrite(std::move(msg));
         return;
     }
-    ByteBuf buf = resp->toByteBuf();
-    ctx->fireWrite(std::any(&buf));
+    ctx->context()->set("__http_encode__", resp->toByteBuf());
+    ctx->fireWrite(std::any(ctx->context()->get<ByteBuf>("__http_encode__")));
 }
 
 }  // namespace xnetty
