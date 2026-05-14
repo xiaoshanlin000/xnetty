@@ -1,6 +1,7 @@
 # Build
 build/
 build*/
+!third_part/llhttp/build/
 cmake-build*/
 cmake-build-*/
 *.o
