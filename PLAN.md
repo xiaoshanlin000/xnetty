@@ -162,7 +162,7 @@ Boss EventLoop                   Worker-1
 | ----------------------------------------------------- | ----------- | -------------- |
 | 4t-100c wrk, 30s, 13B body, 4 Worker (Release, -O2)  | **~150k**   | **~14.6 MB/s** |
 | MinSizeRel 构建（302KB 二进制）                        | **151k**    | **14.7 MB/s**  |
-| TLS 1.3 (hey 30s -c 100, 3 Worker, keep-alive)        | **86.4k**  | -              |
+| TLS 1.3 (hey 30s -c 100, 3 Worker, keep-alive)        | **91.6k**   | -              |
 
 > Release 构建（`cmake -B build -DCMAKE_BUILD_TYPE=Release`），压测使用 `examples/bench_server`，通过标准 HttpResponse pipeline，不走预编码捷径。
 > MinSizeRel 构建（`cmake -B build -DCMAKE_BUILD_TYPE=MinSizeRel`）纯 HTTP 服务二进制仅 **302KB**（BoringSSL/zlib 未被引用时自动剥离，`libcrypto.a` 14MB + `libssl.a` 13MB + `libz.a` 87K 不纳入），QPS 与 Release 持平。`strip` 后可进一步缩小。

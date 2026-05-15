@@ -42,7 +42,7 @@ hey 300k 请求、100 并发、keep-alive，`examples/ssl_server`（SslHandler +
 
 | 配置                              | QPS      |
 | --------------------------------- | -------- |
-| TLS 1.3（hey 30s -c 100）    | **86.4k** |
+| TLS 1.3（hey 30s -c 100）    | **91.6k** |
 
 ### 优化特性
 

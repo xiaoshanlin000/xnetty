@@ -34,7 +34,7 @@ int main() {
 
     ServerBootstrap server;
     server.port(8443)
-        .workerThreads(3)
+        .workerThreads(4)
         .logOff()
         .eventQueueSize(65536)
         .timerSlots(512)
