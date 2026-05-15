@@ -10,7 +10,7 @@
 | -------- | ------------------------------------------------------------------------------------------------------------------------ |
 | **简单** | 链式 API 调用，用户只需关注业务 Handler，5 行代码启动服务                                                                |
 | **小巧** | 核心仅 OS 原生 epoll/kqueue + llhttp (C) 解析 HTTP                                                                       |
-| **快速** | Reactor 模型 + 直读 ByteBuf + 懒解析 + 批量写，实测 M1 Mac 4t-100c wrk 30s QPS ≈ 155k（HTTP/1.1 keep-alive，13B 响应体） |
+| **快速** | Reactor 模型 + 直读 ByteBuf + 懒解析 + 批量写，实测 M1 Mac 4t-100c wrk 30s QPS ≈ 151k（HTTP/1.1 keep-alive，13B 响应体） |
 | **安全** | TLS 1.2+、Handler 线程串行无锁、RAII 全覆盖                                                                              |
 
 ---
@@ -154,14 +154,19 @@ Boss EventLoop                   Worker-1
 | **SSL 直接缓冲读写**             | `flushEncrypted` 直接写入 writeBuf、`channelRead` 直接读入 plainBuf，消除临时缓冲和多次 flush                                                                                                      |
 | **SSL 会话缓存精简**             | 移除每连接冗余的 `findHandler<SslHandler>` + `setSessionCacheSize` 调用                                                                                                                            |
 | **SSL 基准测试**                 | `bench/ssl_bench.cpp`：覆盖握手/加解密/批量/往返/BIO 基线，通过 bytes_per_second 定位优化瓶颈                                                                                                      |
+| **内存泄漏修复**                 | ① `Connection::ctx_` ↔ `Context::conn_` 循环引用（`shared_ptr`），`removeConn` 中 `pipeline.clear()` + `setCtx(nullptr)` 断开；② SSL 初始化顺序改为 BIO→SSL→set_bio，失败时当场清理，避免半初始化泄漏 |
  
 ### 实测性能
 
-| 配置                                                | QPS       | Transfer       |
-| --------------------------------------------------- | --------- | -------------- |
-| 4t-100c wrk, 30s, 13B body, 4 Worker (Release, -O2) | **~150k** | **~14.6 MB/s** |
+| 配置                                                  | QPS         | Transfer       |
+| ----------------------------------------------------- | ----------- | -------------- |
+| 4t-100c wrk, 30s, 13B body, 4 Worker (Release, -O2)  | **~150k**   | **~14.6 MB/s** |
+| MinSizeRel 构建（302KB 二进制）                        | **151k**    | **14.7 MB/s**  |
+| TLS 1.3 (hey 30s -c 100, 3 Worker, keep-alive)        | **86.4k**  | -              |
 
 > Release 构建（`cmake -B build -DCMAKE_BUILD_TYPE=Release`），压测使用 `examples/bench_server`，通过标准 HttpResponse pipeline，不走预编码捷径。
+> MinSizeRel 构建（`cmake -B build -DCMAKE_BUILD_TYPE=MinSizeRel`）纯 HTTP 服务二进制仅 **302KB**（BoringSSL/zlib 未被引用时自动剥离，`libcrypto.a` 14MB + `libssl.a` 13MB + `libz.a` 87K 不纳入），QPS 与 Release 持平。`strip` 后可进一步缩小。
+> TLS 压测使用 `examples/ssl_server`（SslHandler + CompressorHandler + HttpServerCodec），hey 默认 keep-alive 复用连接，BoringSSL 加密/解密 + zlib 压缩 handler 自动协商。
 
 ### 多语言对比 (同机器 4t-100c-30s, 均 Release 构建)
 
@@ -201,6 +206,16 @@ Boss EventLoop                   Worker-1
 │  EAGAIN → pendingFlush_ (weak_ptr) + onWrite 兜底
 │  不丢数据, 高并发时批量 flush
 ```
+
+### MinSizeRel 二进制体积
+
+| 示例                     | 体积   | 静态包含                                  |
+| ------------------------ | ------ | ----------------------------------------- |
+| `bench_server`（纯 HTTP） | 302 KB | 无额外依赖                                |
+| `ssl_server`（TLS）      | 2.4 MB | BoringSSL（libcrypto 14MB + libssl 13MB） |
+| `ws_server`（WebSocket） | 435 KB | 无额外依赖                                |
+
+> MinSizeRel 构建（`cmake -B build -DCMAKE_BUILD_TYPE=MinSizeRel`），链接器自动剥离未引用代码。加入 SslHandler 后静态链接 BoringSSL + zlib，体积增长约 2MB。
 
 ---
 

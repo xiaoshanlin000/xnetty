@@ -90,6 +90,7 @@ void WorkerEventLoop::removeConn(Connection *conn) {
         conn->channel().setFd(-1);
     }
     removeConnection(sp);
+    conn->pipeline().clear();
 }
 
 void WorkerEventLoop::flushWriteBuf(Connection *conn) {

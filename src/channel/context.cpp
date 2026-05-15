@@ -18,22 +18,27 @@ std::atomic<uint64_t> g_nextConnId{1};
 }
 
 void Context::close() {
-    if (conn_ && !conn_->isClosed()) {
-        conn_->setClosed(true);
-        conn_->pipeline().fireInactive();
+    auto c = conn_.lock();
+    if (c && !c->isClosed()) {
+        c->setClosed(true);
+        c->pipeline().fireInactive();
     }
 }
 
-bool Context::isActive() const { return conn_ && !conn_->isClosed() && conn_->channel().fd() >= 0; }
+bool Context::isActive() const {
+    auto c = conn_.lock();
+    return c && !c->isClosed() && c->channel().fd() >= 0;
+}
 
 std::string Context::peerAddress() const {
-    if (!conn_ || conn_->channel().fd() < 0) {
+    auto c = conn_.lock();
+    if (!c || c->channel().fd() < 0) {
         return {};
     }
     struct sockaddr_storage peer;
     socklen_t len = sizeof(peer);
     std::memset(&peer, 0, sizeof(peer));
-    if (::getpeername(conn_->channel().fd(), (struct sockaddr *) &peer, &len) == 0) {
+    if (::getpeername(c->channel().fd(), (struct sockaddr *) &peer, &len) == 0) {
         char buf[INET6_ADDRSTRLEN];
         auto *sa = reinterpret_cast<struct sockaddr *>(&peer);
         if (sa->sa_family == AF_INET6) {
@@ -48,11 +53,20 @@ std::string Context::peerAddress() const {
     return {};
 }
 
-uint64_t Context::id() const { return conn_ ? conn_->connId() : 0; }
+uint64_t Context::id() const {
+    auto c = conn_.lock();
+    return c ? c->connId() : 0;
+}
 
-ChannelPipeline &Context::pipeline() { return conn_->pipeline(); }
+ChannelPipeline &Context::pipeline() {
+    auto c = conn_.lock();
+    return c->pipeline();
+}
 
-EventLoop *Context::loop() const { return conn_ ? conn_->channel().ownerLoop() : nullptr; }
+EventLoop *Context::loop() const {
+    auto c = conn_.lock();
+    return c ? c->channel().ownerLoop() : nullptr;
+}
 
 bool Context::isInLoopThread() const {
     auto *l = loop();
@@ -68,27 +82,41 @@ void Context::runInLoop(std::function<void()> cb) {
 
 ByteBuf &Context::writeBuf() {
     thread_local ByteBuf kEmpty;
-    return conn_ ? conn_->writeBuf() : kEmpty;
+    auto c = conn_.lock();
+    return c ? c->writeBuf() : kEmpty;
 }
+
 void Context::setConnKeepAlive(bool ka) {
-    if (conn_) {
-        conn_->setKeepAlive(ka);
+    auto c = conn_.lock();
+    if (c) {
+        c->setKeepAlive(ka);
     }
 }
-bool Context::connKeepAlive() const { return conn_ ? conn_->isKeepAlive() : true; }
+
+bool Context::connKeepAlive() const {
+    auto c = conn_.lock();
+    return c ? c->isKeepAlive() : true;
+}
 
 std::string &Context::pendingBody() {
     thread_local std::string kEmpty;
-    return conn_ ? conn_->pendingBody() : kEmpty;
+    auto c = conn_.lock();
+    return c ? c->pendingBody() : kEmpty;
 }
 
-Connection &Context::conn() { return *conn_; }
-std::shared_ptr<Connection> Context::sharedConn() { return conn_; }
+Connection &Context::conn() {
+    auto c = conn_.lock();
+    return *c;
+}
+
+std::shared_ptr<Connection> Context::sharedConn() { return conn_.lock(); }
+
 std::shared_ptr<Context> Context::sharedCtx() {
-    if (!conn_) {
+    auto c = conn_.lock();
+    if (!c) {
         return nullptr;
     }
-    return std::shared_ptr<Context>(conn_, this);
+    return std::shared_ptr<Context>(c, this);
 }
 
 static std::shared_ptr<WorkerEventLoop> getLoop(const std::shared_ptr<Connection> &conn) {
@@ -99,11 +127,15 @@ static std::shared_ptr<WorkerEventLoop> getLoop(const std::shared_ptr<Connection
 }
 
 void Context::flush() {
-    auto loop = getLoop(conn_);
+    auto c = conn_.lock();
+    if (!c) {
+        return;
+    }
+    auto loop = getLoop(c);
     if (!loop) {
         return;
     }
-    loop->flushWriteBuf(conn_.get());
+    loop->flushWriteBuf(c.get());
 }
 
 std::unique_ptr<ByteBuf> Context::allocateBuf(size_t cap) {
@@ -121,59 +153,76 @@ void Context::releaseBuf(std::unique_ptr<ByteBuf> buf) {
 uint64_t allocateConnId() { return g_nextConnId.fetch_add(1, std::memory_order_relaxed); }
 
 void Context::signalActivity() {
-    if (conn_) {
-        conn_->setLastReadMs(nowMs());
+    auto c = conn_.lock();
+    if (c) {
+        c->setLastReadMs(nowMs());
     }
 }
 
 void Context::writeAndFlush(std::shared_ptr<HttpResponse> &&resp) {
-    auto loop = getLoop(conn_);
+    auto c = conn_.lock();
+    if (!c) {
+        return;
+    }
+    auto loop = getLoop(c);
     if (!loop) {
         return;
     }
-    resp->setKeepAlive(conn_->isKeepAlive());
-    bool ka = conn_->isKeepAlive();
-    conn_->pipeline().fireWrite(std::move(*resp));
+    resp->setKeepAlive(c->isKeepAlive());
+    bool ka = c->isKeepAlive();
+    c->pipeline().fireWrite(std::move(*resp));
     if (!ka) {
-        conn_->setKeepAlive(false);
+        c->setKeepAlive(false);
     }
-    loop->flushWriteBuf(conn_.get());
+    loop->flushWriteBuf(c.get());
 }
 
 void Context::writeAndFlush(HttpResponse &&resp) {
-    auto loop = getLoop(conn_);
+    auto c = conn_.lock();
+    if (!c) {
+        return;
+    }
+    auto loop = getLoop(c);
     if (!loop) {
         return;
     }
-    resp.setKeepAlive(conn_->isKeepAlive());
-    bool ka = conn_->isKeepAlive();
-    conn_->pipeline().fireWrite(std::move(resp));
+    resp.setKeepAlive(c->isKeepAlive());
+    bool ka = c->isKeepAlive();
+    c->pipeline().fireWrite(std::move(resp));
     if (!ka) {
-        conn_->setKeepAlive(false);
+        c->setKeepAlive(false);
     }
-    loop->flushWriteBuf(conn_.get());
+    loop->flushWriteBuf(c.get());
 }
 
 void Context::writeHeaders(const HttpResponse &resp) {
-    auto loop = getLoop(conn_);
-    if (!loop || !conn_) {
+    auto c = conn_.lock();
+    if (!c) {
+        return;
+    }
+    auto loop = getLoop(c);
+    if (!loop) {
         return;
     }
     ByteBuf buf(512);
     resp.serializeHeaders(buf);
-    conn_->pipeline().fireWrite(std::any(&buf));
-    loop->flushWriteBuf(conn_.get());
+    c->pipeline().fireWrite(std::any(&buf));
+    loop->flushWriteBuf(c.get());
 }
 
 void Context::writeBody(const uint8_t *data, size_t len) {
-    auto loop = getLoop(conn_);
-    if (!loop || !conn_) {
+    auto c = conn_.lock();
+    if (!c) {
+        return;
+    }
+    auto loop = getLoop(c);
+    if (!loop) {
         return;
     }
     ByteBuf buf(len);
     buf.writeBytes(data, len);
-    conn_->pipeline().fireWrite(std::any(&buf));
-    loop->flushWriteBuf(conn_.get());
+    c->pipeline().fireWrite(std::any(&buf));
+    loop->flushWriteBuf(c.get());
 }
 
 }  // namespace xnetty

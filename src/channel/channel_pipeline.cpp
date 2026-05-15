@@ -253,11 +253,10 @@ void ChannelPipeline::fireWriteFrom(size_t startIndex, std::any msg) {
 // ── Pipeline lifecycle ──────────────────────────────────────────────
 
 void ChannelPipeline::setContext(const std::shared_ptr<Connection> &conn) {
-    auto pipeAlias = std::shared_ptr<ChannelPipeline>(conn, &conn->pipeline());
     for (auto &entry : handlers_) {
         if (entry.ctx) {
             entry.ctx->setCtx(conn->ctx());
-            entry.ctx->setPipeline(pipeAlias);
+            entry.ctx->setPipeline(this);
         }
     }
 }
@@ -363,14 +362,15 @@ void ChannelHandlerContext::fireWrite(std::any msg) {
     }
     if (index_ == 0) {
         if (auto **bufPtr = std::any_cast<ByteBuf *>(&msg)) {
-            if (ctx_) {
-                auto &wbuf = ctx_->writeBuf();
+            auto c = ctx_.lock();
+            if (c) {
+                auto &wbuf = c->writeBuf();
                 wbuf.writeBytes((*bufPtr)->readableData(), (*bufPtr)->readableBytes());
-                if (ctx_->conn().isWriteBufOverflow()) {
-                    ctx_->close();
+                if (c->conn().isWriteBufOverflow()) {
+                    c->close();
                     return;
                 }
-                ctx_->flush();
+                c->flush();
             }
         }
         return;
@@ -397,14 +397,16 @@ void ChannelHandlerContext::fireClose() {
 void ChannelHandlerContext::write(std::any msg) { fireWrite(std::move(msg)); }
 
 void ChannelHandlerContext::flush() {
-    if (ctx_) {
-        ctx_->flush();
+    auto c = ctx_.lock();
+    if (c) {
+        c->flush();
     }
 }
 
 void ChannelHandlerContext::close() {
-    if (ctx_) {
-        ctx_->close();
+    auto c = ctx_.lock();
+    if (c) {
+        c->close();
     }
 }
 

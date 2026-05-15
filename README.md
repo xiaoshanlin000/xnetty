@@ -26,6 +26,24 @@ wrk 4 线程 100 连接压测 30 秒，13B 响应体，keep-alive。全部 Relea
 | Response 创建 + 序列化 | 76 ns  |
 | 全流水线               | 342 ns |
 
+### MinSizeRel 二进制体积
+
+`cmake -B build -DCMAKE_BUILD_TYPE=MinSizeRel`，链接器自动剥离未引用代码。
+
+| 示例                     | 体积   | 静态包含                                  |
+| ------------------------ | ------ | ----------------------------------------- |
+| `bench_server`（纯 HTTP） | 302 KB | 无额外依赖                                |
+| `ssl_server`（TLS）      | 2.4 MB | BoringSSL（libcrypto 14MB + libssl 13MB） |
+| `ws_server`（WebSocket） | 435 KB | 无额外依赖                                |
+
+### TLS 压测
+
+hey 300k 请求、100 并发、keep-alive，`examples/ssl_server`（SslHandler + CompressorHandler + HttpServerCodec），3 Worker，BoringSSL 加密/解密 + zlib 压缩 handler 自动协商。
+
+| 配置                              | QPS      |
+| --------------------------------- | -------- |
+| TLS 1.3（hey 30s -c 100）    | **86.4k** |
+
 ### 优化特性
 
 - **零拷贝 body** — `writev` 绕过响应体拷贝，header 在 writeBuf，body 直接从 string 写

@@ -14,8 +14,7 @@ class ChannelHandler;
 
 class ChannelHandlerContext {
    public:
-    ChannelHandlerContext(ChannelPipeline *pipeline, size_t index)
-        : pipelineLife_(std::shared_ptr<ChannelPipeline>(pipeline, [](ChannelPipeline *) {})), index_(index) {}
+    ChannelHandlerContext(ChannelPipeline *pipeline, size_t index) : pipelineLife_(pipeline), index_(index) {}
 
     void fireChannelRegistered();
     void fireChannelUnregistered();
@@ -34,13 +33,13 @@ class ChannelHandlerContext {
     void flush();
     void close();
 
-    std::shared_ptr<Context> context() const { return ctx_; }
-    std::shared_ptr<ChannelPipeline> getPipeline() const { return pipelineLife_; }
+    std::shared_ptr<Context> context() const { return ctx_.lock(); }
+    ChannelPipeline *getPipeline() const { return pipelineLife_; }
     std::shared_ptr<ChannelHandler> handler() const { return handler_; }
     std::string name() const { return name_; }
     bool isRemoved() const { return removed_; }
 
-    void setPipeline(const std::shared_ptr<ChannelPipeline> &sp) { pipelineLife_ = sp; }
+    void setPipeline(ChannelPipeline *p) { pipelineLife_ = p; }
     void setHandler(const std::shared_ptr<ChannelHandler> &h) { handler_ = h; }
     void setName(const std::string &n) { name_ = n; }
     void setCtx(const std::shared_ptr<Context> &c) { ctx_ = c; }
@@ -49,9 +48,9 @@ class ChannelHandlerContext {
 
    private:
     friend class ChannelPipeline;
-    std::shared_ptr<ChannelPipeline> pipelineLife_;
+    ChannelPipeline *pipelineLife_ = nullptr;
     size_t index_ = 0;
-    std::shared_ptr<Context> ctx_;
+    std::weak_ptr<Context> ctx_;
     std::shared_ptr<ChannelHandler> handler_;
     std::string name_;
     bool removed_ = false;

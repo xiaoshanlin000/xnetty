@@ -37,6 +37,13 @@ struct SslHandler::SslState {
         if (ssl) {
             SSL_shutdown(ssl);
             SSL_free(ssl);
+        } else {
+            if (inBio) {
+                BIO_free(inBio);
+            }
+            if (outBio) {
+                BIO_free(outBio);
+            }
         }
     }
 
@@ -114,15 +121,15 @@ void SslHandler::channelRead(const std::shared_ptr<ChannelHandlerContext> &ctx, 
     ByteBuf *enc = *bufPtr;
 
     if (!st.ssl) {
-        st.ssl = SSL_new(impl_->sslCtx);
-        if (!st.ssl) {
-            handleError(ctx, 0, "SSL_new");
-            return;
-        }
         st.inBio = BIO_new(BIO_s_mem());
         st.outBio = BIO_new(BIO_s_mem());
         if (!st.inBio || !st.outBio) {
             handleError(ctx, 0, "BIO_new");
+            return;
+        }
+        st.ssl = SSL_new(impl_->sslCtx);
+        if (!st.ssl) {
+            handleError(ctx, 0, "SSL_new");
             return;
         }
         SSL_set_bio(st.ssl, st.inBio, st.outBio);

@@ -17,6 +17,19 @@ cmake -B build -DCMAKE_BUILD_TYPE=MinSizeRel && cmake --build build
 
 - 写代码时确保包含所需的头文件，不要遗漏
 
+## 内存安全铁律
+
+**一个对象只有一个 shared_ptr 所有者，其他地方全部用 weak_ptr 或裸指针。**
+
+- `Connection` 的所有者 = `WorkerEventLoop::connections_` map
+- `Context` 的所有者 = `Connection::ctx_`
+- `ChannelPipeline` 的所有者 = `Connection::pipeline_` (值成员)
+- `ChannelHandlerContext::ctx_` = `weak_ptr<Context>`
+- `ChannelHandlerContext::pipelineLife_` = 裸指针 `ChannelPipeline*`
+- `Context::conn_` = `weak_ptr<Connection>`
+
+违反这条铁律会导致 `shared_ptr` 循环引用，连接关闭后内存不释放（SSL/TLS handler 的 SSL 对象、zlib 流等永久泄漏）。压测 300k 请求 RSS 涨几十 MB，排查费时。犯错后用 `leaks <pid>` + 审阅 `shared_ptr` 成员找环。
+
 ```bash
 cd build
 make tidy   # clang-tidy: 强制大括号

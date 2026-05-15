@@ -112,7 +112,7 @@ class Context {
         T val;
     };
 
-    std::shared_ptr<Connection> conn_;
+    std::weak_ptr<Connection> conn_;
     std::unordered_map<std::string, std::shared_ptr<Data>> store_;
     std::unordered_map<std::string, std::type_index> keyTypes_;
 };
