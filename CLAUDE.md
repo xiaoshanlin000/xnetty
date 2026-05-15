@@ -50,6 +50,19 @@ wrk -t4 -c100 -d30s http://127.0.0.1:19997/
 kill %1
 ```
 
+SSL 压测（wrk 不支持 HTTPS，用 hey）：
+
+```bash
+# 启动 ssl_server (port 8443, 3 worker)
+build/ssl_server &
+
+# hey 压测 (100c 30s)
+hey -z 30s -c 100 https://127.0.0.1:8443/
+
+# 停止
+kill %1
+```
+
 Rust 对比压测:
 
 ```bash
