@@ -120,8 +120,9 @@ BENCHMARK(BM_Response_Body_64k);
 static void BM_Response_ManyHeaders_10(benchmark::State &state) {
     HttpResponse res;
     res.setContentType("application/json").setContent("{}");
-    for (int i = 0; i < 10; i++)
+    for (int i = 0; i < 10; i++) {
         res.setHeader("X-Hdr-" + std::to_string(i), "value" + std::to_string(i));
+    }
     ByteBuf buf(1024);
     for (auto _ : state) {
         buf.clear();
@@ -134,8 +135,9 @@ BENCHMARK(BM_Response_ManyHeaders_10);
 static void BM_Response_ManyHeaders_100(benchmark::State &state) {
     HttpResponse res;
     res.setContentType("application/json").setContent("{}");
-    for (int i = 0; i < 100; i++)
+    for (int i = 0; i < 100; i++) {
         res.setHeader("X-Hdr-" + std::to_string(i), "value" + std::to_string(i));
+    }
     ByteBuf buf(8192);
     for (auto _ : state) {
         buf.clear();

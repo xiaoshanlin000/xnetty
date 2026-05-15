@@ -330,7 +330,6 @@ server.port(8080)
     .timerSlots(256)            // 时间轮槽数
     .timerTickMs(1000)          // 时间轮滴答间隔
     .maxEventsPerPoll(1024)     // poll 批次大小
-    .sslCacheSize(10240)        // SSL 会话缓存
     .listenBacklog(128)         // TCP backlog
     .tcpNoDelay(true)           // Nagle 算法
     .start();
@@ -467,7 +466,7 @@ ctx->releaseBuf(std::move(buf));
 | 压缩      | 1.3.1                | [zlib](https://zlib.net) (gzip/deflate)                                       |
 | TopicTree | -                    | 自实现（参考 [uWebSockets](https://github.com/uNetworking/uWebSockets) 设计） |
 | 测试框架  | 1.14.0               | [Google Test](https://github.com/google/googletest)                           |
-| 基准测试  | 1.8.3                | [Google Benchmark](https://github.com/google/benchmark)                       |
+| 基准测试  | 1.8.3                | [Google Benchmark](https://github.com/google/benchmark) — 含 `ssl_bench`（握手/加解密/BIO 基线） |
 
 ## License
 

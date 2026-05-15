@@ -155,5 +155,7 @@ if(XNETTY_BUILD_BENCH)
         add_executable(${BENCH_NAME} ${BENCH_FILE})
         target_link_libraries(${BENCH_NAME} PRIVATE xnetty benchmark::benchmark)
         target_include_directories(${BENCH_NAME} PRIVATE include)
+        target_compile_definitions(${BENCH_NAME} PRIVATE
+            TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
     endforeach()
 endif()

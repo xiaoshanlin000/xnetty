@@ -146,11 +146,14 @@ Boss EventLoop                   Worker-1
 | **Handler 状态管理**             | 连接级状态存 `Context::set<T>()` KV store，Handler 无成员变量，`state_demo` 示例展示完整用法                                                                                                        |
 | **Handler Netty API**            | `handlerAdded`/`handlerRemoved`/`exceptionCaught`，`channelRegistered`/`channelUnregistered`/`channelActive`/`channelInactive`/`channelReadComplete`/`userEventTriggered`，出站 `flush`/`close`  |
 | **Pipeline 增强**                | `addFirst`/`addBefore`/`addAfter`/`replace`(按名/按类型)，`fireChannelXxx` 事件链，`ChannelHandlerContext::write`/`flush`/`close`/`handler`/`name`/`isRemoved`                                    |
-| **ServerBootstrap 配置**         | `eventQueueSize`/`timerSlots`/`timerTickMs`/`maxEventsPerPoll`/`sslCacheSize`/`listenBacklog`/`tcpNoDelay`，参数校验，中英双语注释                                                                  |
+| **ServerBootstrap 配置**         | `eventQueueSize`/`timerSlots`/`timerTickMs`/`maxEventsPerPoll`/`listenBacklog`/`tcpNoDelay`，参数校验，中英双语注释                                                                                |
 | **SpscQueue 动态队列**           | 从编译期模板 `SpscQueue<T,N>` 改为运行时 `SpscQueue<T>`，`eventQueueSize` 可配置                                                                                                                    |
 | **TimerWheel 运行时重建**        | `timerSlots`/`timerTickMs` 支持运行时配置，`unique_ptr` 指针化管理                                                                                                                                  |
 | **安装**                         | `cmake --install build` 安装 lib + headers，`XNETTY_BUILD_SHARED=ON` 构建动态库                                                                                                                     |
 | **线程安全 Context 缓冲区**      | `Context::writeBuf()`/`pendingBody()` 的 `static` 后备缓冲区改为 `thread_local`，无多线程竞态                                                                                                       |
+| **SSL 直接缓冲读写**             | `flushEncrypted` 直接写入 writeBuf、`channelRead` 直接读入 plainBuf，消除临时缓冲和多次 flush                                                                                                      |
+| **SSL 会话缓存精简**             | 移除每连接冗余的 `findHandler<SslHandler>` + `setSessionCacheSize` 调用                                                                                                                            |
+| **SSL 基准测试**                 | `bench/ssl_bench.cpp`：覆盖握手/加解密/批量/往返/BIO 基线，通过 bytes_per_second 定位优化瓶颈                                                                                                      |
  
 ### 实测性能
 
@@ -260,12 +263,14 @@ int main() {
 Handler 可只做 inbound、只做 outbound、或双向（`ChannelDuplexHandler`）：
 
 ```cpp
+auto ssl = SslHandler::forServerFile("cert.pem", "key.pem");
+
 ServerBootstrap server;
-server.port(8080)
-    .pipeline([](const std::shared_ptr<ChannelPipeline> &pipe) {
-        pipe->addLast(std::make_shared<SslHandler>());          // 读解密 / 写加密 (双向)
+server.port(8443)
+    .pipeline([ssl](const std::shared_ptr<ChannelPipeline> &pipe) {
+        pipe->addLast(ssl);                                      // 读解密 / 写加密 (双向)
         pipe->addLast(std::make_shared<HttpServerCodec>());     // 读解析 HTTP (inbound)
-        pipe->addLast(std::make_shared<CompressHandler>());     // 读解压 / 写压缩 (双向)
+        pipe->addLast(std::make_shared<CompressorHandler>());   // 读解压 / 写压缩 (双向)
         pipe->addLast(std::make_shared<BizHandler>());          // 业务 (inbound)
     })
     .start();
@@ -276,12 +281,12 @@ server.port(8080)
 ```
 Inbound:  socket → SslHandler(decrypt) → ctx->fireRead(plain)
                 → HttpServerCodec(parse) → ctx->fireRead(HttpRequest)
-                → CompressHandler(decompress) → ctx->fireRead(data)
+                → CompressorHandler(decompress) → ctx->fireRead(data)
                 → BizHandler.onRequest
 
 Outbound: socket ← SslHandler(encrypt) ← ctx->fireWrite(encrypted)
                 ← HttpEncoder(serialize) ← ctx->fireWrite(httpBytes)
-                ← CompressHandler(compress) ← ctx->fireWrite(compressed)
+                ← CompressorHandler(compress) ← ctx->fireWrite(compressed)
                 ← BizHandler.writeAndFlush
 ```
 
@@ -387,6 +392,11 @@ xnetty/
 │   ├── websocket/websocket_handler.cpp # onOpen/onMessage/onClose
 │   ├── websocket/ws_handshake.cpp
 │   └── websocket/ws_upgrade_handler.cpp # HTTP→WS 升级
+├── bench/
+│   ├── http_bench.cpp              # ByteBuf / HTTP 编解码 / Router benchmark
+│   ├── pipeline_bench.cpp          # Pipeline 全链路 benchmark
+│   ├── response_bench.cpp          # Response 创建+序列化 benchmark
+│   └── ssl_bench.cpp               # SSL 握手 / 加解密 / 批量 / BIO 基线 benchmark
 ├── tests/ (29 test suites, SslHandler integration + fuzz)
 ├── examples/ (hello_world, rest_api, bench_server, outbound_demo, ws_server, ws_chat, mixed_server, demo, ssl_server, state_demo)
 └── rustserver/                    # hyper baseline 对比

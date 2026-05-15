@@ -25,8 +25,9 @@ class PipeCapture : public ChannelInboundHandler {
    public:
     int called = 0;
     void channelRead(const std::shared_ptr<ChannelHandlerContext> &ctx, std::any msg) override {
-        if (std::any_cast<HttpRequest>(&msg))
+        if (std::any_cast<HttpRequest>(&msg)) {
             called++;
+        }
     }
 };
 
@@ -135,8 +136,9 @@ static void BM_Pipeline_KeepAlive(benchmark::State &state) {
     int nReqs = state.range(0);
     std::string single = kBenchReq;
     std::string pipeline;
-    for (int i = 0; i < nReqs; i++)
+    for (int i = 0; i < nReqs; i++) {
         pipeline += single;
+    }
 
     for (auto _ : state) {
         auto buf = ByteBuf::copyOf(reinterpret_cast<const uint8_t *>(pipeline.data()), pipeline.size());

@@ -15,7 +15,6 @@
 #include "xnetty/http/http_codec.h"
 #include "xnetty/http/http_response.h"
 #include "xnetty/http/http_server_handler.h"
-#include "xnetty/ssl/ssl_handler.h"
 
 namespace xnetty {
 
@@ -220,12 +219,6 @@ void WorkerEventLoop::setupConnection(int connfd) {
             }
         }
     }
-    if (sslCacheSize_ > 0) {
-        if (auto ssl = conn->pipeline().findHandler<SslHandler>()) {
-            ssl->setSessionCacheSize(sslCacheSize_);
-        }
-    }
-
     if (tcpNoDelay_) {
         int flag = 1;
         ::setsockopt(connfd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));

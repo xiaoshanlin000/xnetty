@@ -19,8 +19,9 @@ class BenchCapture : public ChannelInboundHandler {
    public:
     int called = 0;
     void channelRead(const std::shared_ptr<ChannelHandlerContext> &ctx, std::any msg) override {
-        if (std::any_cast<HttpRequest>(&msg))
+        if (std::any_cast<HttpRequest>(&msg)) {
             called++;
+        }
     }
 };
 
@@ -94,8 +95,9 @@ BENCHMARK(BM_HttpResponseEncodeLarge);
 static void BM_HttpResponseManyHeaders(benchmark::State &state) {
     HttpResponse res;
     res.setStatus(HttpStatus::OK);
-    for (int i = 0; i < 100; i++)
+    for (int i = 0; i < 100; i++) {
         res.setHeader("X-Hdr-" + std::to_string(i), std::string(30, 'v'));
+    }
     res.setContent("ok");
     for (auto _ : state) {
         auto buf = HttpEncoder::encode(res);
@@ -172,8 +174,9 @@ static void BM_HttpDecoderPipelined(benchmark::State &state) {
 
     std::string single = "GET /x HTTP/1.1\r\nHost: x\r\n\r\n";
     std::string pipelined;
-    for (int i = 0; i < 50; i++)
+    for (int i = 0; i < 50; i++) {
         pipelined += single;
+    }
 
     for (auto _ : state) {
         auto buf = ByteBuf::copyOf(reinterpret_cast<const uint8_t *>(pipelined.data()), pipelined.size());

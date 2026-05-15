@@ -80,11 +80,6 @@ class ServerBootstrap {
         maxEventsPerPoll_ = n < 1 ? 1024 : n;
         return *this;
     }
-    // SSL 会话缓存条目数(0 表示使用 OpenSSL 默认) / SSL session cache entries, 0 = OpenSSL default
-    ServerBootstrap &sslCacheSize(long size) {
-        sslCacheSize_ = size < 0 ? 0 : size;
-        return *this;
-    }
     // listen backlog / TCP accept queue depth
     ServerBootstrap &listenBacklog(int n) {
         listenBacklog_ = n < 1 ? 128 : n > 65535 ? 65535 : n;
@@ -128,7 +123,6 @@ class ServerBootstrap {
     uint32_t timerSlots_ = 256;
     uint32_t timerTickMs_ = 1000;
     int maxEventsPerPoll_ = 1024;
-    long sslCacheSize_ = 10240;
     int listenBacklog_ = 128;
     bool tcpNoDelay_ = true;
     std::atomic<bool> running_;

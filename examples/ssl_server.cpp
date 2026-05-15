@@ -40,7 +40,6 @@ int main() {
         .timerSlots(512)
         .timerTickMs(500)
         .maxEventsPerPoll(512)
-        .sslCacheSize(20480)
         .listenBacklog(256)
         .tcpNoDelay(false)
         .pipeline([&](const std::shared_ptr<ChannelPipeline> &pipe) {

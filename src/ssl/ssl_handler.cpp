@@ -5,6 +5,7 @@
 #include <openssl/ssl.h>
 #include <openssl/x509.h>
 
+#include <algorithm>
 #include <utility>
 
 #include "xnetty/channel/channel_handler_context.h"
@@ -29,7 +30,6 @@ struct SslHandler::SslState {
     SSL *ssl = nullptr;
     BIO *inBio = nullptr;
     BIO *outBio = nullptr;
-    ByteBuf plainBuf;
     bool handshakeDone = false;
     bool sslShutdown = false;
 
@@ -47,7 +47,6 @@ struct SslHandler::SslState {
         : ssl(std::exchange(other.ssl, nullptr)),
           inBio(std::exchange(other.inBio, nullptr)),
           outBio(std::exchange(other.outBio, nullptr)),
-          plainBuf(std::move(other.plainBuf)),
           handshakeDone(other.handshakeDone),
           sslShutdown(other.sslShutdown) {}
     SslState &operator=(SslState &&other) noexcept {
@@ -55,7 +54,6 @@ struct SslHandler::SslState {
             std::swap(ssl, other.ssl);
             std::swap(inBio, other.inBio);
             std::swap(outBio, other.outBio);
-            plainBuf = std::move(other.plainBuf);
             handshakeDone = other.handshakeDone;
             sslShutdown = other.sslShutdown;
         }
@@ -156,12 +154,12 @@ void SslHandler::channelRead(const std::shared_ptr<ChannelHandlerContext> &ctx, 
         }
     }
 
-    st.plainBuf.clear();
+    ByteBuf plainBuf;
     while (true) {
-        uint8_t buf[4096];
-        int ret = SSL_read(st.ssl, buf, sizeof(buf));
+        plainBuf.ensureWritable(4096);
+        int ret = SSL_read(st.ssl, plainBuf.writableData(), static_cast<int>(plainBuf.writableBytes()));
         if (ret > 0) {
-            st.plainBuf.writeBytes(buf, static_cast<size_t>(ret));
+            plainBuf.setWriterIndex(plainBuf.writerIndex() + static_cast<size_t>(ret));
             continue;
         }
         if (ret == 0) {
@@ -179,8 +177,8 @@ void SslHandler::channelRead(const std::shared_ptr<ChannelHandlerContext> &ctx, 
         break;
     }
 
-    if (st.plainBuf.readableBytes() > 0) {
-        ctx->fireRead(std::any(&st.plainBuf));
+    if (plainBuf.readableBytes() > 0) {
+        ctx->fireRead(std::any(&plainBuf));
     }
 }
 
@@ -277,14 +275,23 @@ void SslHandler::flushEncrypted(SslState &st, const std::shared_ptr<ChannelHandl
     if (!ctx || !ctx->context()) {
         return;
     }
+    auto &wb = ctx->context()->writeBuf();
+    size_t written = 0;
     while (true) {
-        uint8_t buf[4096];
-        int n = BIO_read(st.outBio, buf, sizeof(buf));
+        int pend = BIO_pending(st.outBio);
+        if (pend <= 0) {
+            break;
+        }
+        size_t chunk = std::min(static_cast<size_t>(pend), size_t{4096});
+        wb.ensureWritable(chunk);
+        int n = BIO_read(st.outBio, wb.writableData(), static_cast<int>(chunk));
         if (n <= 0) {
             break;
         }
-        auto &wb = ctx->context()->writeBuf();
-        wb.writeBytes(buf, static_cast<size_t>(n));
+        wb.setWriterIndex(wb.writerIndex() + static_cast<size_t>(n));
+        written += static_cast<size_t>(n);
+    }
+    if (written > 0) {
         ctx->context()->flush();
     }
 }

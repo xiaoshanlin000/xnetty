@@ -30,7 +30,7 @@ class WorkerEventLoop : public EventLoop {
     void setMaxHeaderSize(size_t s) { maxHeaderSize_ = s; }
     void setMaxBodySize(size_t s) { maxBodySize_ = s; }
     void setTcpNoDelay(bool on) { tcpNoDelay_ = on; }
-    void setSslCacheSize(long size) { sslCacheSize_ = size; }
+
     void setupConnection(int connfd);
 
     std::shared_ptr<Connection> acquireConn();
@@ -67,7 +67,7 @@ class WorkerEventLoop : public EventLoop {
     size_t maxHeaderSize_ = 0;
     size_t maxBodySize_ = 0;
     bool tcpNoDelay_ = true;
-    long sslCacheSize_ = 10240;
+
     std::vector<std::unique_ptr<ByteBuf>> bufPool_;
 };
 
