@@ -492,4 +492,4 @@ ctx->releaseBuf(std::move(buf));
 
 ---
 
-*该项目的开发和重构由 [OpenCode](https://github.com/anomalyco/opencode) + [DeepSeek V4 Flash](https://www.deepseek.com/) 协助完成。*
+*该项目的开发和重构由 [OpenCode](https://github.com/anomalyco/opencode) + [DeepSeek V4 Flash](https://www.deepseek.com/) 协助完成，作者耗时三天从零构建。*
