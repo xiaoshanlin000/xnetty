@@ -73,6 +73,8 @@ class Connection : public std::enable_shared_from_this<Connection> {
 
     std::string &pendingBody() { return pendingBody_; }
     const std::string &pendingBody() const { return pendingBody_; }
+    size_t pendingBodyOffset() const { return pendingBodyOffset_; }
+    void setPendingBodyOffset(size_t off) { pendingBodyOffset_ = off; }
 
     void reset() {
         pipeline_.clear();
@@ -83,6 +85,7 @@ class Connection : public std::enable_shared_from_this<Connection> {
         lastReadMs_ = 0;
         lastWriteMs_ = 0;
         pendingBody_.clear();
+        pendingBodyOffset_ = 0;
     }
 
    private:
@@ -98,6 +101,7 @@ class Connection : public std::enable_shared_from_this<Connection> {
     std::weak_ptr<WorkerEventLoop> loop_;
     std::shared_ptr<Context> ctx_;
     std::string pendingBody_;
+    size_t pendingBodyOffset_ = 0;
     size_t writeBufWaterMark_ = 65536;
 };
 

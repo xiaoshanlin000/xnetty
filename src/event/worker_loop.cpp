@@ -121,18 +121,20 @@ void WorkerEventLoop::flushWriteBuf(Connection *conn) {
     auto &wbuf = conn->writeBuf();
 
     size_t hdrLen = wbuf.readableBytes();
-    size_t bodyLen = conn->pendingBody().size();
+    size_t bodyRemaining = conn->pendingBody().size() - conn->pendingBodyOffset();
 
     ssize_t n = 0;
-    if (bodyLen > 0 && hdrLen > 0) {
+    if (bodyRemaining > 0 && hdrLen > 0) {
         struct iovec iov[2];
         iov[0].iov_base = const_cast<uint8_t *>(wbuf.readableData());
         iov[0].iov_len = hdrLen;
-        iov[1].iov_base = const_cast<char *>(conn->pendingBody().data());
-        iov[1].iov_len = bodyLen;
+        iov[1].iov_base = const_cast<char *>(conn->pendingBody().data() + conn->pendingBodyOffset());
+        iov[1].iov_len = bodyRemaining;
         n = ::writev(conn->channel().fd(), iov, 2);
     } else if (hdrLen > 0) {
         n = ::write(conn->channel().fd(), wbuf.readableData(), hdrLen);
+    } else if (bodyRemaining > 0) {
+        n = ::write(conn->channel().fd(), conn->pendingBody().data() + conn->pendingBodyOffset(), bodyRemaining);
     } else {
         return;
     }
@@ -150,15 +152,16 @@ void WorkerEventLoop::flushWriteBuf(Connection *conn) {
     size_t hdrWritten = std::min(written, hdrLen);
     wbuf.discard(hdrWritten);
     if (written > hdrWritten) {
-        conn->pendingBody().erase(0, written - hdrWritten);
-    } else {
-        conn->pendingBody().clear();
+        conn->setPendingBodyOffset(conn->pendingBodyOffset() + (written - hdrWritten));
     }
 
-    if (wbuf.readableBytes() > 0 || !conn->pendingBody().empty()) {
+    bool hasRemaining = wbuf.readableBytes() > 0 || conn->pendingBodyOffset() < conn->pendingBody().size();
+    if (hasRemaining) {
         conn->channel().enableWriting();
     } else {
         wbuf.clear();
+        conn->pendingBody().clear();
+        conn->setPendingBodyOffset(0);
     }
 
     if (!conn->isKeepAlive()) {
