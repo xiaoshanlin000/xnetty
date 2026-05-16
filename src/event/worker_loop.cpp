@@ -121,23 +121,14 @@ void WorkerEventLoop::flushWriteBuf(Connection *conn) {
     auto &wbuf = conn->writeBuf();
 
     size_t hdrLen = wbuf.readableBytes();
-    size_t bodyRemaining = conn->pendingBody().size() - conn->pendingBodyOffset();
-
-    ssize_t n = 0;
-    if (bodyRemaining > 0 && hdrLen > 0) {
-        struct iovec iov[2];
-        iov[0].iov_base = const_cast<uint8_t *>(wbuf.readableData());
-        iov[0].iov_len = hdrLen;
-        iov[1].iov_base = const_cast<char *>(conn->pendingBody().data() + conn->pendingBodyOffset());
-        iov[1].iov_len = bodyRemaining;
-        n = ::writev(conn->channel().fd(), iov, 2);
-    } else if (hdrLen > 0) {
-        n = ::write(conn->channel().fd(), wbuf.readableData(), hdrLen);
-    } else if (bodyRemaining > 0) {
-        n = ::write(conn->channel().fd(), conn->pendingBody().data() + conn->pendingBodyOffset(), bodyRemaining);
-    } else {
+    if (hdrLen == 0) {
         return;
     }
+
+    struct iovec iov[1];
+    iov[0].iov_base = const_cast<uint8_t *>(wbuf.readableData());
+    iov[0].iov_len = hdrLen;
+    ssize_t n = ::writev(conn->channel().fd(), iov, 1);
 
     if (n < 0 && errno == EAGAIN) {
         conn->channel().enableWriting();
@@ -149,19 +140,11 @@ void WorkerEventLoop::flushWriteBuf(Connection *conn) {
     }
 
     size_t written = static_cast<size_t>(n);
-    size_t hdrWritten = std::min(written, hdrLen);
-    wbuf.discard(hdrWritten);
-    if (written > hdrWritten) {
-        conn->setPendingBodyOffset(conn->pendingBodyOffset() + (written - hdrWritten));
-    }
-
-    bool hasRemaining = wbuf.readableBytes() > 0 || conn->pendingBodyOffset() < conn->pendingBody().size();
-    if (hasRemaining) {
+    wbuf.discard(written);
+    if (wbuf.readableBytes() > 0) {
         conn->channel().enableWriting();
     } else {
         wbuf.clear();
-        conn->pendingBody().clear();
-        conn->setPendingBodyOffset(0);
     }
 
     if (!conn->isKeepAlive()) {
@@ -250,6 +233,7 @@ void WorkerEventLoop::setupConnection(int connfd) {
         int flag = 1;
         ::setsockopt(connfd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
     }
+    conn->setWriteBufWaterMark(writeBufWaterMark_);
 
     conn->setLastReadMs(xnetty::nowMs());
     conn->setLastWriteMs(xnetty::nowMs());

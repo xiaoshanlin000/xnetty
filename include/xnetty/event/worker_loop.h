@@ -53,6 +53,7 @@ class WorkerEventLoop : public EventLoop {
     void setMaxHeaderSize(size_t s) { maxHeaderSize_ = s; }
     void setMaxBodySize(size_t s) { maxBodySize_ = s; }
     void setTcpNoDelay(bool on) { tcpNoDelay_ = on; }
+    void setWriteBufWaterMark(size_t bytes) { writeBufWaterMark_ = bytes; }
 
     void setupConnection(int connfd);
 
@@ -90,6 +91,7 @@ class WorkerEventLoop : public EventLoop {
     size_t maxHeaderSize_ = 0;
     size_t maxBodySize_ = 0;
     bool tcpNoDelay_ = true;
+    size_t writeBufWaterMark_ = 65536;
 
     std::vector<std::unique_ptr<ByteBuf>> bufPool_;
 };

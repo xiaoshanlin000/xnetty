@@ -116,7 +116,6 @@ class Context {
     ByteBuf &writeBuf();
     void setConnKeepAlive(bool ka);
     bool connKeepAlive() const;
-    std::string &pendingBody();
     Connection &conn();
     std::shared_ptr<Connection> sharedConn();
     std::shared_ptr<Context> sharedCtx();

@@ -121,12 +121,6 @@ bool Context::connKeepAlive() const {
     return c ? c->isKeepAlive() : true;
 }
 
-std::string &Context::pendingBody() {
-    thread_local std::string kEmpty;
-    auto c = conn_.lock();
-    return c ? c->pendingBody() : kEmpty;
-}
-
 Connection &Context::conn() {
     auto c = conn_.lock();
     return *c;

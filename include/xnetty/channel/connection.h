@@ -71,11 +71,6 @@ class Connection : public std::enable_shared_from_this<Connection> {
     std::shared_ptr<Context> ctx() const { return ctx_; }
     void setCtx(const std::shared_ptr<Context> &c) { ctx_ = c; }
 
-    std::string &pendingBody() { return pendingBody_; }
-    const std::string &pendingBody() const { return pendingBody_; }
-    size_t pendingBodyOffset() const { return pendingBodyOffset_; }
-    void setPendingBodyOffset(size_t off) { pendingBodyOffset_ = off; }
-
     void reset() {
         pipeline_.clear();
         readBuf_.trim(1024);
@@ -84,8 +79,6 @@ class Connection : public std::enable_shared_from_this<Connection> {
         keepAlive_ = true;
         lastReadMs_ = 0;
         lastWriteMs_ = 0;
-        pendingBody_.clear();
-        pendingBodyOffset_ = 0;
     }
 
    private:
@@ -100,8 +93,6 @@ class Connection : public std::enable_shared_from_this<Connection> {
     uint64_t lastWriteMs_ = 0;
     std::weak_ptr<WorkerEventLoop> loop_;
     std::shared_ptr<Context> ctx_;
-    std::string pendingBody_;
-    size_t pendingBodyOffset_ = 0;
     size_t writeBufWaterMark_ = 65536;
 };
 

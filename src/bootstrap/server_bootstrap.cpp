@@ -51,6 +51,7 @@ void ServerBootstrap::workerInit(const std::shared_ptr<WorkerEventLoop> &loop) {
     loop->setMaxHeaderSize(maxHeaderSize_);
     loop->setMaxBodySize(maxBodySize_);
     loop->setTcpNoDelay(tcpNoDelay_);
+    loop->setWriteBufWaterMark(writeBufWaterMark_);
     loop->setEventQueueSize(eventQueueSize_);
     loop->setTimerSlots(timerSlots_);
     loop->setTimerTickMs(timerTickMs_);

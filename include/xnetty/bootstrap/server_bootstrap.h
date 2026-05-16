@@ -113,6 +113,11 @@ class ServerBootstrap {
         tcpNoDelay_ = on;
         return *this;
     }
+    // writeBuf 水位线(字节)，超过则关连接；0 不限制 / write buffer watermark, 0 = unlimited
+    ServerBootstrap &writeBufWaterMark(size_t bytes) {
+        writeBufWaterMark_ = bytes;
+        return *this;
+    }
 
     ServerBootstrap &pipeline(PipelineConfigurator configurator) {
         pipelineConfigurator_ = std::move(configurator);
@@ -148,6 +153,7 @@ class ServerBootstrap {
     int maxEventsPerPoll_ = 1024;
     int listenBacklog_ = 128;
     bool tcpNoDelay_ = true;
+    size_t writeBufWaterMark_ = 65536;
     std::atomic<bool> running_;
 
     EventLoopGroup workerGroup_;
